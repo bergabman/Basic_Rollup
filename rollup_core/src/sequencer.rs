@@ -1,12 +1,26 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, RwLock},
+};
 
-use async_channel::{Receiver, Sender};
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::{account::{AccountSharedData, ReadableAccount}, clock::Slot, feature_set::FeatureSet, fee::FeeStructure, pubkey::Pubkey, rent_collector::RentCollector, transaction::Transaction};
-use solana_compute_budget::compute_budget::ComputeBudget;
-use solana_program_runtime::loaded_programs::{BlockRelation, ForkGraph, LoadProgramMetrics, ProgramCacheEntry};
 use anyhow::{anyhow, Result};
-use solana_svm::transaction_processing_callback::TransactionProcessingCallback;
+use async_channel::{Receiver, Sender};
+use solana_client::{nonblocking::rpc_client as nonblocking_rpc_client, rpc_client::RpcClient};
+use solana_compute_budget::compute_budget::ComputeBudget;
+use solana_program_runtime::{
+    invoke_context::{self, EnvironmentConfig, InvokeContext},
+    loaded_programs::{BlockRelation, ForkGraph, LoadProgramMetrics, ProgramCacheEntry, ProgramCacheForTxBatch, ProgramRuntimeEnvironments}, sysvar_cache, timings::ExecuteTimings,
+};
+
+use solana_bpf_loader_program::syscalls::create_program_runtime_environment_v1;
+use solana_sdk::{
+    account::{AccountSharedData, ReadableAccount}, clock::{Epoch, Slot}, feature_set::FeatureSet, fee::FeeStructure, hash::Hash, pubkey::Pubkey, rent::Rent, rent_collector::RentCollector, transaction::{SanitizedTransaction, Transaction}, transaction_context::TransactionContext
+};
+use solana_svm::{
+    message_processor::MessageProcessor,
+    transaction_processing_callback::TransactionProcessingCallback,
+    transaction_processor::{TransactionBatchProcessor, TransactionProcessingEnvironment},
+};
 
 use crate::{rollupdb::RollupDBMessage, settle::settle_state};
 
@@ -41,13 +55,95 @@ pub async fn run(
 
         // Solana runtime.
         let fork_graph = Arc::new(RwLock::new(SequencerForkGraph {}));
-       
-        // create transaction processor, add accounts and programs, builtins, 
+
+        // create transaction processor, add accounts and programs, builtins,
+        let processor = TransactionBatchProcessor::<SequencerForkGraph>::default();
+
+        let mut cache = processor.program_cache.write().unwrap();
+
+        // Initialize the mocked fork graph.
+        // let fork_graph = Arc::new(RwLock::new(PayTubeForkGraph {}));
+        cache.fork_graph = Some(Arc::downgrade(&fork_graph));
+
+        let rent = Rent::default();
+
+        let rpc_client_temp = RpcClient::new("https://api.devnet.solana.com".to_string());
+
+        let accounts_data = transaction
+            .message
+            .account_keys
+            .iter()
+            .map(|pubkey| {
+                (
+                    pubkey.clone(),
+                    rpc_client_temp.get_account(pubkey).unwrap().into(),
+                )
+            })
+            .collect::<Vec<(Pubkey, AccountSharedData)>>();
+
+        let mut transaction_context = TransactionContext::new(accounts_data, Rent::default(), 0, 0);
 
 
+        let runtime_env = Arc::new(
+            create_program_runtime_environment_v1(&feature_set, &compute_budget, false, false)
+                .unwrap(),
+        );
+
+        let mut prog_cache = ProgramCacheForTxBatch::new(
+            Slot::default(), 
+            ProgramRuntimeEnvironments {
+                program_runtime_v1: runtime_env.clone(),
+                program_runtime_v2: runtime_env,
+            },
+            None, 
+            Epoch::default(),
+        );
+
+        let sysvar_c = sysvar_cache::SysvarCache::default();
+        let env = EnvironmentConfig::new(
+            Hash::default(),
+            None,
+            None,
+            Arc::new(feature_set),
+            lamports_per_signature,
+            &sysvar_c,
+        );
+        // let default_env = EnvironmentConfig::new(blockhash, epoch_total_stake, epoch_vote_accounts, feature_set, lamports_per_signature, sysvar_cache)
+
+        // let processing_environment = TransactionProcessingEnvironment {
+        //     blockhash: Hash::default(),
+        //     epoch_total_stake: None,
+        //     epoch_vote_accounts: None,
+        //     feature_set: Arc::new(feature_set),
+        //     fee_structure: Some(&fee_structure),
+        //     lamports_per_signature,
+        //     rent_collector: Some(&rent_collector),
+        // };
+        
+        let mut invoke_context = InvokeContext::new(
+           &mut transaction_context,
+           &mut prog_cache,
+           env,
+           None,
+           compute_budget.to_owned()
+        );
+
+        let mut used_cu = 0u64;
+        let sanitized = SanitizedTransaction::try_from_legacy_transaction(
+            Transaction::from(transaction.clone()),
+            &HashSet::new(),
+        )
+        .unwrap();
 
 
-
+        let mut timings = ExecuteTimings::default();
+        let result_msg = MessageProcessor::process_message(
+            &sanitized.message(),
+            &vec![],
+            &mut invoke_context,
+            &mut timings,
+            &mut used_cu,
+        );
 
         // Send processed transaction to db for storage and availability
         rollupdb_sender
@@ -68,14 +164,13 @@ pub async fn run(
 
             // Send proof to chain
 
-            let _settle_tx_hash = settle_state("proof".into()).await?;
+            // let _settle_tx_hash = settle_state("proof".into()).await?;
             tx_counter = 0u32;
         }
     }
 
     Ok(())
 }
-
 
 /// In order to use the `TransactionBatchProcessor`, another trait - Solana
 /// Program Runtime's `ForkGraph` - must be implemented, to tell the batch
@@ -111,11 +206,6 @@ impl<'a> SequencerAccountLoader<'a> {
 /// In the Agave validator, this implementation is Bank, powered by AccountsDB.
 impl TransactionProcessingCallback for SequencerAccountLoader<'_> {
     fn get_account_shared_data(&self, pubkey: &Pubkey) -> Option<AccountSharedData> {
-
-
-
-
-
         if let Some(account) = self.cache.read().unwrap().get(pubkey) {
             return Some(account.clone());
         }

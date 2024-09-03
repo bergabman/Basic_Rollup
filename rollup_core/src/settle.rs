@@ -1,9 +1,9 @@
 use anyhow::Result;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::transaction::Transaction;
+use solana_sdk::{blake3::Hash, transaction::Transaction};
 
 // Settle the state on solana, called by sequencer
-pub async fn settle_state(proof: String) -> Result<String> {
+pub async fn settle_state(proof: Hash) -> Result<String> {
     let rpc_client = RpcClient::new("https://api.devnet.solana.com".into());
 
     // Create proof transaction, calling the right function in the contract
