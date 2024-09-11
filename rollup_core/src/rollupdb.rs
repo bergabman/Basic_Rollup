@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{
     account::AccountSharedData, keccak::Hash, pubkey::Pubkey, transaction::Transaction,
 };
+
+use crossbeam::channel::{Receiver as CBReceiver, Sender as CBSender};
 use std::{
     collections::{HashMap, HashSet},
     default,
@@ -27,7 +29,7 @@ pub struct RollupDB {
 
 impl RollupDB {
     pub async fn run(
-        rollup_db_receiver: Receiver<RollupDBMessage>,
+        rollup_db_receiver: CBReceiver<RollupDBMessage>,
         frontend_sender: Sender<FrontendMessage>,
     ) {
         let mut db = RollupDB {
@@ -36,7 +38,7 @@ impl RollupDB {
             transactions: HashMap::new(),
         };
 
-        while let Ok(message) = rollup_db_receiver.recv().await {
+        while let Ok(message) = rollup_db_receiver.recv() {
             if let Some(accounts_to_lock) = message.lock_accounts {
                 // Lock accounts, by removing them from the accounts_db hashmap, and adding them to locked accounts
                 let _ = accounts_to_lock.iter().map(|pubkey| {

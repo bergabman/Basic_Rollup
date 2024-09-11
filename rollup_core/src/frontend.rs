@@ -5,6 +5,7 @@ use std::{
 
 use actix_web::{error, web, HttpResponse};
 use async_channel::{Receiver, Send, Sender};
+use crossbeam::channel::{Sender as CBSender, Receiver as CBReceiver};
 use serde::{Deserialize, Serialize};
 use solana_sdk::keccak::Hash;
 use solana_sdk::transaction::Transaction;
@@ -33,7 +34,7 @@ pub struct RollupTransaction {
 
 pub async fn submit_transaction(
     body: web::Json<RollupTransaction>,
-    sequencer_sender: web::Data<Sender<Transaction>>,
+    sequencer_sender: web::Data<CBSender<Transaction>>,
     // rollupdb_sender: web::Data<Sender<RollupDBMessage>>,
 ) -> actix_web::Result<HttpResponse> {
     // Validate transaction structure with serialization in function signature
@@ -43,7 +44,7 @@ pub async fn submit_transaction(
     // Send transaction to sequencer
     sequencer_sender
         .send(body.sol_transaction.clone())
-        .await
+        
         .unwrap();
 
     // Return response
