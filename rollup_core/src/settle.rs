@@ -1,6 +1,6 @@
 use anyhow::Result;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{blake3::Hash, transaction::Transaction};
+use solana_sdk::{hash::Hash, transaction::Transaction};
 
 // Settle the state on solana, called by sequencer
 pub async fn settle_state(proof: Hash) -> Result<String> {
