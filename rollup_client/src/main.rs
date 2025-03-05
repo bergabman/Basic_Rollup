@@ -4,15 +4,15 @@ use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::{self, RpcClient};
 use solana_sdk::{
     instruction::Instruction,
-    keccak::{Hash, Hasher},
+    hash::{Hash, Hasher},
     native_token::LAMPORTS_PER_SOL,
-    signature::Signature,
-    signer::{self, Signer},
+    signature::{Keypair, Signer},
     system_instruction, system_program,
     transaction::Transaction,
+    pubkey::Pubkey,
 };
 use solana_transaction_status::UiTransactionEncoding::{self, Binary};
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, time::Duration, fs};
 // use serde_json;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -26,66 +26,120 @@ pub struct GetTransaction {
     pub get_tx: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "status", content = "data")]
+pub enum TransactionResponse {
+    Success { message: String },
+    Error { message: String },
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
-    let keypair = signer::keypair::read_keypair_file("/home/dev/.solana/testkey.json").unwrap();
-    let keypair2 = signer::keypair::read_keypair_file("/home/dev/.solana/mykey_1.json").unwrap();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load existing keypairs from files
+    let sender = Keypair::from_bytes(&fs::read("keys/sender.json")?)?;
+    let receiver = Keypair::from_bytes(&fs::read("keys/receiver.json")?)?;
+    println!("rec: {:?}", receiver.pubkey());
+    
+    // Connect to devnet
+    let rpc_client = RpcClient::new("https://api.devnet.solana.com".to_string());
+    
+    // Print initial balances
+    let sender_balance = rpc_client.get_balance(&sender.pubkey()).await?;
+    let receiver_balance = rpc_client.get_balance(&receiver.pubkey()).await?;
+    println!("Initial Sender {} balance: {} SOL", sender.pubkey(), sender_balance as f64 / 1_000_000_000.0);
+    println!("Initial Receiver {} balance: {} SOL", receiver.pubkey(), receiver_balance as f64 / 1_000_000_000.0);
+
+    // Initialize delegation service for sender
+    println!("\nInitializing delegation service for sender...");
+    let client = reqwest::Client::new();
+    let response = client
+        .post("http://127.0.0.1:8080/init_delegation_service")
+        .body(sender.to_bytes().to_vec())
+        .send()
+        .await?;
+    println!("Sender delegation service init response: {:?}", response.text().await?);
+
+    // Wait for initialization
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Initialize delegation service for receiver
+    println!("\nInitializing delegation service for receiver...");
+    let response = client
+        .post("http://127.0.0.1:8080/add_delegation_signer")
+        .body(receiver.to_bytes().to_vec())
+        .send()
+        .await?;
+    println!("Receiver delegation service init response: {:?}", response.text().await?);
+
+    // Wait for initialization
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Create test transactions
+    let amounts = vec![5, -3, 9, -10, 1, -10, 4, -3, 9, -6];
+    let mut txs = Vec::new();
+    
+    for amount in amounts {
+        let (from, to, lamports) = if amount > 0 {
+            (&sender, &receiver, amount as u64)
+        } else {
+            (&receiver, &sender, (-amount) as u64)
+        };
+
+        let ix = system_instruction::transfer(
+            &from.pubkey(),
+            &to.pubkey(),
+            lamports * (LAMPORTS_PER_SOL / 10)
+        );
+
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&from.pubkey()),
+            &[from],
+            rpc_client.get_latest_blockhash().await?,
+        );
+
+        txs.push(tx);
+    }
+
+    // Submit transactions
+    println!("\nSubmitting transactions...");
+    for (i, tx) in txs.into_iter().enumerate() {
+        let rtx = RollupTransaction {
+            sender: sender.pubkey().to_string(),
+            sol_transaction: tx,
+        };
+
+        let response = client
+            .post("http://127.0.0.1:8080/submit_transaction")
+            .json(&rtx)
+            .send()
+            .await?;
+            
+        println!("Transaction {} response: {:?}", i + 1, response.text().await?);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    // Print final balances
+    let sender_balance = rpc_client.get_balance(&sender.pubkey()).await?;
+    let receiver_balance = rpc_client.get_balance(&receiver.pubkey()).await?;
+    println!("\nFinal Sender {} balance: {} SOL", sender.pubkey(), sender_balance as f64 / 1_000_000_000.0);
+    println!("Final Receiver {} balance: {} SOL", receiver.pubkey(), receiver_balance as f64 / 1_000_000_000.0);
+    
+    Ok(())
+}
+
+async fn gen_transfer_tx(path1: String, path2: String, amount: u64) -> Transaction {
+    println!("Amount: {amount}");
+    let keypair = signer::keypair::read_keypair_file(path1.to_string()).unwrap();
+    let keypair2 = signer::keypair::read_keypair_file(path2.to_string()).unwrap();
     let rpc_client = RpcClient::new("https://api.devnet.solana.com".into());
 
     let ix =
-        system_instruction::transfer(&keypair2.pubkey(), &keypair.pubkey(), 1 * LAMPORTS_PER_SOL);
-    let tx = Transaction::new_signed_with_payer(
+        system_instruction::transfer(&keypair2.pubkey(), &keypair.pubkey(), amount * (LAMPORTS_PER_SOL / 10));
+    Transaction::new_signed_with_payer(
         &[ix],
         Some(&keypair2.pubkey()),
         &[&keypair2],
         rpc_client.get_latest_blockhash().await.unwrap(),
-    );
-
-    // let sig = Signature::from_str("3ENa2e9TG6stDNkUZkRcC2Gf5saNMUFhpptQiNg56nGJ9eRBgSJpZBi7WLP5ev7aggG1JAXQWzBk8Xfkjcx1YCM2").unwrap();
-    // let tx = rpc_client.get_transaction(&sig, UiTransactionEncoding::Binary).await.unwrap();
-    let client = reqwest::Client::new();
-
-    // let tx_encoded: Transaction = tx.try_into().unwrap();
-
-    let test_response = client
-        .get("http://127.0.0.1:8080")
-        .send()
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-
-    println!("{test_response:#?}");
-
-    let rtx = RollupTransaction {
-        sender: "Me".into(),
-        sol_transaction: tx,
-    };
-
-    // let serialized_rollup_transaction = serde_json::to_string(&rtx)?;
-
-    let submit_transaction = client
-        .post("http://127.0.0.1:8080/submit_transaction")
-        .json(&rtx)
-        .send()
-        .await?;
-    // .json()
-    // .await?;
-
-    println!("{submit_transaction:#?}");
-    let mut hasher = Hasher::default();
-    hasher.hash(bincode::serialize(&rtx.sol_transaction).unwrap().as_slice());
-
-    println!("{:#?}", hasher.clone().result());
-
-    let tx_resp = client
-        .post("http://127.0.0.1:8080/get_transaction")
-        .json(&HashMap::from([("get_tx", hasher.result().to_string())]))
-        .send()
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-
-    println!("{tx_resp:#?}");
-
-    Ok(())
+    )
 }
