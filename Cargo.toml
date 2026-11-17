@@ -1,0 +1,20 @@
+[workspace]
+members = ["rollup_core", "rollup_client", "xtask"]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+solana-hash = { version = "4.6", features = ["serde"] }
+solana-instruction = { version = "4.0", features = ["bincode"] }
+solana-keypair = "4.0"
+solana-message = { version = "5.1", features = ["serde", "wincode"] }
+solana-pubkey = { version = "4.3", features = ["serde"] }
+solana-signature = { version = "3.5", features = ["serde"] }
+solana-signer = "4.0"
+solana-system-interface = { version = "3.3", features = ["bincode"] }
+solana-transaction = { version = "5.1", features = ["serde", "verify", "wincode"] }
+wincode = "0.6"

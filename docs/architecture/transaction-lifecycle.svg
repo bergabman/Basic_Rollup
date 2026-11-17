@@ -1,0 +1,297 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1200" role="img" aria-labelledby="title desc">
+<title id="title">Basic Rollup: transaction lifecycle</title>
+<desc id="desc">One v1 SOL transfer: the client fetches a blockhash, signs a v1 transfer and posts it to /submit_transaction. The sequencer runs decode, validate, load, budget, process and commit, each with the Solana Mainnet limits it enforces and the HTTP status returned when it refuses. The result is a state change, a receipt and, planned, settlement on a cluster.</desc>
+<style><![CDATA[
+@font-face{font-family:Inter;src:local("Inter"),url("fonts/inter.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{--bg:#f3f2eb;--panel:#faf8f1;--raised:#e9ede4;--line:#c3cdbf;--text:#243c32;--muted:#53685d;--subtle:#879e8d;--tag:#53685d;--accent:#187c5b;--accent-text:#196647;--accent-tint:rgba(52,215,161,.13);--accent-line:rgba(24,124,91,.42);--boundary:rgba(52,215,161,.045);--amber:#875c0d;--amber-text:#835716;--amber-tint:#fbedcc;--amber-line:#d9a441;--l1:#e7ebe2;--coral:#871f0d;--coral-tint:rgba(255,90,61,.09);--coral-line:rgba(135,31,13,.32);--sans:Inter,Arial,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--bg)}
+@media (prefers-color-scheme:dark){:root{--bg:#111517;--panel:#191e21;--raised:#21292d;--line:#354047;--text:#edf3f3;--muted:#a9b6bc;--subtle:#8798a1;--tag:#9fadb4;--accent:#34d7a1;--accent-text:#9be8cb;--accent-tint:rgba(52,215,161,.08);--accent-line:rgba(52,215,161,.42);--boundary:rgba(52,215,161,.025);--amber:#ffb020;--amber-text:#ffbd45;--amber-tint:rgba(255,176,32,.08);--amber-line:rgba(255,176,32,.55);--l1:#14181b;--coral:#ff5a3d;--coral-tint:rgba(255,90,61,.08);--coral-line:rgba(255,90,61,.42)}}
+.bg{fill:var(--bg)}
+.panel{fill:var(--panel);stroke:var(--line)}
+.raised{fill:var(--raised);stroke:var(--line)}
+.boundary{fill:var(--boundary);stroke:var(--accent-line);stroke-width:1.2}
+.chip{fill:var(--accent-tint);stroke:var(--accent-line)}
+.planned{fill:var(--amber-tint);stroke:var(--amber-line);stroke-dasharray:6 4}
+.check{fill:var(--panel);stroke:var(--subtle);stroke-dasharray:1.5 4;stroke-linecap:round}
+.l1{fill:var(--l1);stroke:var(--line)}
+.edge{fill:none;stroke:var(--accent);stroke-width:1.6}
+.edge-planned{fill:none;stroke:var(--amber);stroke-width:1.6;stroke-dasharray:6 5}
+.edge-check{fill:none;stroke:var(--subtle);stroke-width:1.6;stroke-dasharray:1.5 4;stroke-linecap:round}
+.rule{stroke:var(--line);fill:none}
+.dot{fill:var(--accent)}
+.mk-accent{fill:var(--accent)}
+.mk-amber{fill:var(--amber)}
+.pill-planned{fill:var(--amber-tint);stroke:var(--amber-line)}
+text{font-family:var(--sans);fill:var(--text)}
+.brand{font-size:24px;font-weight:700;letter-spacing:-.7px}
+.tag{font-size:10.5px;font-weight:450;letter-spacing:.23em;fill:var(--tag)}
+.h1{font-size:30px;font-weight:600;letter-spacing:-.4px}
+.lead{font-size:15px;fill:var(--muted)}
+.eyebrow{font-size:11px;font-weight:650;letter-spacing:.15em;fill:var(--muted)}
+.h3{font-size:17px;font-weight:600}
+.body{font-size:12.5px}
+.small{font-size:12px;fill:var(--muted)}
+.label{font-size:11px;font-weight:500;fill:var(--muted)}
+.code{font-family:var(--mono);font-size:12px}
+.code-s{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.strong{font-weight:600}
+.accent-t{fill:var(--accent-text)}
+.amber-t{fill:var(--amber-text)}
+.text-t{fill:var(--text)}
+.fail{fill:var(--coral-tint);stroke:var(--coral-line)}
+.coral-t{fill:var(--coral)}
+.ok{fill:var(--accent-tint);stroke:var(--accent-line)}
+.num{font-size:26px;font-weight:700;fill:var(--accent-text)}
+.bus-label{fill:var(--bg)}
+]]></style>
+<defs><marker id="a-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-accent" d="M0 1L9 5L0 9z"/></marker></defs>
+<rect class="bg" x="0" y="0" width="1440" height="1200" rx="0"/>
+<svg x="40" y="28" width="44" height="44" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ca-pin-flat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><radialGradient id="ca-core" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="7"><stop offset="0" stop-color="#f5fffb"/><stop offset="0.28" stop-color="#b8fbe1" stop-opacity="0.9"/><stop offset="0.62" stop-color="#4fe7ae" stop-opacity="0.35"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-halo" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="1.25"/></filter><linearGradient id="ca-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c6fbe5"/><stop offset="0.28" stop-color="#62eeb9"/><stop offset="0.62" stop-color="#27cf91"/><stop offset="1" stop-color="#0c895c"/></linearGradient><linearGradient id="ca-lit1" gradientUnits="userSpaceOnUse" x1="12.166" y1="36.28" x2="21.459" y2="40.263"><stop offset="0" stop-color="#c0c9cd"/><stop offset="0.12" stop-color="#9ea8ad"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#394145"/></linearGradient><radialGradient id="ca-spill" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="17"><stop offset="0" stop-color="#34d7a1" stop-opacity="0.34"/><stop offset="0.55" stop-color="#34d7a1" stop-opacity="0.1"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><linearGradient id="ca-strip" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="60"><stop offset="0" stop-color="#22b583"/><stop offset="0.4" stop-color="#55ebb4"/><stop offset="0.56" stop-color="#86f5cb"/><stop offset="0.76" stop-color="#34d7a1"/><stop offset="1" stop-color="#13895f"/></linearGradient><linearGradient id="ca-lit2" gradientUnits="userSpaceOnUse" x1="42.541" y1="40.263" x2="51.834" y2="36.28"><stop offset="0" stop-color="#9aa4a8"/><stop offset="0.12" stop-color="#889297"/><stop offset="0.4" stop-color="#717b80"/><stop offset="0.75" stop-color="#5e676c"/><stop offset="1" stop-color="#525b60"/></linearGradient><linearGradient id="ca-pin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><linearGradient id="ca-lit3" gradientUnits="userSpaceOnUse" x1="32" y1="4" x2="32" y2="16"><stop offset="0" stop-color="#bfc8cc"/><stop offset="0.12" stop-color="#9da7ac"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#3a4246"/></linearGradient><radialGradient id="ca-bloom" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="15" gradientTransform="translate(0 20) scale(1 0.5)"><stop offset="0" stop-color="#4ff0b5" stop-opacity="0.55"/><stop offset="0.5" stop-color="#34d7a1" stop-opacity="0.18"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><radialGradient id="ca-flash" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="26" gradientTransform="translate(0 15.231) scale(1 0.619)"><stop offset="0" stop-color="#f3fffa" stop-opacity="0.95"/><stop offset="0.32" stop-color="#90f7cf" stop-opacity="0.45"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-shadow" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feOffset dx="0.8" dy="1.3"/><feGaussianBlur stdDeviation="1"/></filter></defs><g class="ca-shadow" filter="url(#ca-shadow)" opacity="0.34"><g class="ca-part ca-bar"><path d="M16 36L48 36L48 44L16 44Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd"/></g></g><g class="ca-part ca-bar"><rect x="12.4" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/><rect x="47.6" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-cap"><rect x="23.957" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/><rect x="38.243" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-bar"><path d="M16 36L48 36M48 36L48 44M48 44L16 44M16 44L16 36" fill="none" stroke="#05241a" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16M28.857 16L13 60M13 60L2 60M2 60L20.857 16" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60M51 60L35.143 16M35.143 16L43.143 16M43.143 16L62 60" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4M38 4L43.143 16M43.143 16L20.857 16M20.857 16L26 4" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-bar"><polygon points="16,36 48,36 48,44 16,44" fill="#0d3529"/><g class="ca-lit"><polygon points="16,36 48,36 48,44 16,44" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="16,36 48,36 48,44 16,44" fill="url(#ca-bar)"/><path d="M16.8 36.8L47.2 36.8M16.8 43.2L16.8 36.8" fill="none" stroke="#effff8" stroke-opacity=".75" stroke-width=".42" stroke-linecap="round"/><path d="M47.2 36.8L47.2 43.2M47.2 43.2L16.8 43.2" fill="none" stroke="#06593b" stroke-opacity=".6" stroke-width=".42" stroke-linecap="round"/><circle cx="32" cy="40" r="7" fill="url(#ca-core)"/><rect x="29.5" y="37.5" width="5" height="5" rx=".7" fill="none" stroke="#e6fff4" stroke-opacity=".75" stroke-width=".45"/><rect x="30.7" y="38.7" width="2.6" height="2.6" rx=".45" fill="#f5fffb"/></g></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd" fill="#596166"/><polygon points="20.857,16 28.857,16 26.722,17.5 21.846,17.5" fill="#d2d9dd"/><polygon points="28.857,16 13,60 11.946,58.5 26.722,17.5" fill="#333b3f"/><polygon points="13,60 2,60 4.275,58.5 11.946,58.5" fill="#333b3f"/><polygon points="2,60 20.857,16 21.846,17.5 4.275,58.5" fill="#d6dde1"/><path d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-lit1)"/><path d="M21.728 17.32L26.978 17.32M4.002 58.68L21.728 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="21.688" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="8.67" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#0d3529"/><g class="ca-lit"><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="62,60 51,60 52.054,58.5 59.725,58.5" fill="#333b3f"/><polygon points="51,60 35.143,16 37.278,17.5 52.054,58.5" fill="#838c91"/><polygon points="35.143,16 43.143,16 42.154,17.5 37.278,17.5" fill="#d2d9dd"/><polygon points="43.143,16 62,60 59.725,58.5 42.154,17.5" fill="#5b6368"/><path d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-lit2)"/><path d="M37.022 17.32L42.272 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="42.313" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="55.33" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#0d3529"/><g class="ca-lit"><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="26,4 38,4 37.011,5.5 26.989,5.5" fill="#d2d9dd"/><polygon points="38,4 43.143,16 40.868,14.5 37.011,5.5" fill="#5b6368"/><polygon points="43.143,16 20.857,16 23.132,14.5 40.868,14.5" fill="#333b3f"/><polygon points="20.857,16 26,4 26.989,5.5 23.132,14.5" fill="#d6dde1"/><path d="M26.989 5.5L37.011 5.5L40.868 14.5L23.132 14.5Z" fill-rule="evenodd" fill="url(#ca-lit3)"/><path d="M26.87 5.32L37.13 5.32M22.859 14.68L26.87 5.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#0d3529"/><g class="ca-lit"><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="url(#ca-strip)"/></g></g><ellipse class="ca-glow ca-bloom" cx="32" cy="40" rx="15" ry="7.5" fill="url(#ca-bloom)"/><ellipse class="ca-flash" cx="32" cy="40" rx="26" ry="16.1" fill="url(#ca-flash)" opacity="0"/></svg>
+<text class="brand" x="96" y="55">Amussis</text>
+<text class="tag" x="97" y="73">AGENTIC ENGINEERING</text>
+<text class="eyebrow" x="1400" y="48" text-anchor="end">BASIC ROLLUP</text>
+<text class="small" x="1400" y="70" text-anchor="end">Agave SVM 4.4.1 · Solana Mainnet parameters</text>
+<line class="rule" x1="40" y1="96" x2="1400" y2="96"/>
+<text class="h1" x="40" y="148">Transaction lifecycle</text>
+<text class="lead" x="40" y="178">One v1 SOL transfer from rollup_client through the sequencer's six phases, with the Solana Mainnet limits each phase enforces.</text>
+<rect class="panel" x="40" y="214" width="400" height="124" rx="3"/>
+<text class="eyebrow" x="60" y="240">CLIENT · BLOCKHASH</text>
+<text class="code strong" x="60" y="264" font-size="15">GET /get_latest_blockhash</text>
+<text class="small" x="60" y="288">The sequencer's issue_blockhash returns a fresh</text>
+<text class="small" x="60" y="306">hash and keeps the last 150 it issued. A</text>
+<text class="small" x="60" y="324">transaction must use one of them.</text>
+<rect class="panel" x="480" y="214" width="400" height="124" rx="3"/>
+<text class="eyebrow" x="500" y="240">CLIENT · SIGN</text>
+<text class="h3" x="500" y="264" font-size="16">A v1 transfer, signed by the payer</text>
+<text class="small" x="500" y="288">Transfer of 100000000 lamports (0.1 demo SOL),</text>
+<text class="small" x="500" y="306">compiled with TRANSFER_CONFIG: compute_unit_limit</text>
+<text class="small" x="500" y="324">150, loaded accounts data 32 KiB.</text>
+<rect class="panel" x="920" y="214" width="480" height="124" rx="3"/>
+<text class="eyebrow" x="940" y="240">HTTP FRONTEND · SUBMIT</text>
+<text class="code strong" x="940" y="264" font-size="15">POST /submit_transaction</text>
+<text class="small" x="940" y="288">{"sol_transaction": base64 of the wincode bytes}.</text>
+<text class="small" x="940" y="306">The frontend decodes it, sends SequencerMessage::Submit</text>
+<text class="small" x="940" y="324">over mpsc::channel(128) and waits on a oneshot reply.</text>
+<path class="edge" d="M440 276H478" marker-end="url(#a-accent)"/>
+<path class="edge" d="M880 276H918" marker-end="url(#a-accent)"/>
+<path class="edge" d="M1160 338V356H146V382" marker-end="url(#a-accent)"/>
+<rect class="bus-label" x="560" y="347" width="330" height="18" rx="0"/>
+<text class="label strong accent-t" x="725" y="360" text-anchor="middle">Sequencer::execute(): one transaction at a time</text>
+<rect class="panel" x="40" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="56" y="420">1</text>
+<text class="code strong" x="84" y="418" font-size="19">decode</text>
+<text class="code-s" x="56" y="440">Sequencer::decode</text>
+<line class="rule" x1="56" y1="452" x2="240" y2="452"/>
+<text class="eyebrow" x="56" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="body" x="56" y="494" font-size="12">The first byte gives the</text>
+<text class="body" x="56" y="511" font-size="12">version; V1_PREFIX marks v1.</text>
+<text class="body" x="56" y="528" font-size="12">Wire bytes over the limit for</text>
+<text class="body" x="56" y="545" font-size="12">that version are refused. The</text>
+<text class="body" x="56" y="562" font-size="12">rest is parsed by</text>
+<text class="code text-t" x="56" y="579" font-size="10.5">wincode::deserialize_exact</text>
+<text class="eyebrow" x="56" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="52" y="640" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="62" y="657" font-size="12.5">4096 bytes</text>
+<text class="label" x="62" y="671" font-size="10.5">v1 wire size,</text>
+<text class="label" x="62" y="684" font-size="10.5">v1::MAX_TRANSACTION_SIZE</text>
+<rect class="raised" x="52" y="698" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="62" y="715" font-size="12.5">1232 bytes</text>
+<text class="label" x="62" y="729" font-size="10.5">legacy, v0: PACKET_DATA_SIZE</text>
+<rect class="raised" x="52" y="742" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="62" y="759" font-size="12.5">enable_tx_v1</text>
+<text class="label" x="62" y="773" font-size="10.5">feature must be active for v1</text>
+<rect class="fail" x="52" y="846" width="192" height="48" rx="3"/>
+<text class="code strong coral-t" x="62" y="866" font-size="12.5">400 · no fee</text>
+<text class="label" x="62" y="883" font-size="10.5">oversized, malformed or v1 off</text>
+<path class="edge" d="M258 414H266.8" marker-end="url(#a-accent)"/>
+<rect class="panel" x="268.8" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="284.8" y="420">2</text>
+<text class="code strong" x="312.8" y="418" font-size="19">validate</text>
+<text class="code-s" x="284.8" y="440">Sequencer::validate</text>
+<line class="rule" x1="284.8" y1="452" x2="468.8" y2="452"/>
+<text class="eyebrow" x="284.8" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="code text-t" x="284.8" y="494" font-size="10.5">verify_and_hash_message</text>
+<text class="body" x="284.8" y="511" font-size="12">checks every signature;</text>
+<text class="code text-t" x="284.8" y="528" font-size="10.5">RuntimeTransaction::</text>
+<text class="body" x="284.8" y="545" font-size="12">try_create sanitizes the</text>
+<text class="body" x="284.8" y="562" font-size="12">message. Only System</text>
+<text class="body" x="284.8" y="579" font-size="12">Transfer instructions; no</text>
+<text class="body" x="284.8" y="596" font-size="12">address lookup tables.</text>
+<text class="eyebrow" x="284.8" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="280.8" y="640" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="290.8" y="657" font-size="12.5">64 · 64 · 12</text>
+<text class="label" x="290.8" y="671" font-size="10.5">v1 accounts, instructions,</text>
+<text class="label" x="290.8" y="684" font-size="10.5">signatures</text>
+<rect class="raised" x="280.8" y="698" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="290.8" y="715" font-size="12.5">64</text>
+<text class="label" x="290.8" y="729" font-size="10.5">account locks per transaction;</text>
+<text class="label" x="290.8" y="742" font-size="10.5">the raise to 128 is not active</text>
+<rect class="raised" x="280.8" y="756" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="290.8" y="773" font-size="12.5">150</text>
+<text class="label" x="290.8" y="787" font-size="10.5">latest issued blockhashes</text>
+<rect class="raised" x="280.8" y="800" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="290.8" y="817" font-size="12.5">replay</text>
+<text class="label" x="290.8" y="831" font-size="10.5">signature seen before → 409</text>
+<rect class="fail" x="280.8" y="846" width="192" height="48" rx="3"/>
+<text class="code strong coral-t" x="290.8" y="866" font-size="12.5">400 or 409 · no fee</text>
+<text class="label" x="290.8" y="883" font-size="10.5">invalid, or already processed</text>
+<path class="edge" d="M486.8 414H495.6" marker-end="url(#a-accent)"/>
+<rect class="panel" x="497.6" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="513.6" y="420">3</text>
+<text class="code strong" x="541.6" y="418" font-size="19">load</text>
+<text class="code-s" x="513.6" y="440">Sequencer::load</text>
+<line class="rule" x1="513.6" y1="452" x2="697.6" y2="452"/>
+<text class="eyebrow" x="513.6" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="body" x="513.6" y="494" font-size="12">RollupDB::pull gets every</text>
+<text class="body" x="513.6" y="511" font-size="12">account key. Addresses not</text>
+<text class="body" x="513.6" y="528" font-size="12">yet resolved are fetched from</text>
+<text class="code text-t" x="513.6" y="545" font-size="10.5">ROLLUP_CLUSTER_URL</text>
+<text class="body" x="513.6" y="562" font-size="12">in one getMultipleAccounts</text>
+<text class="body" x="513.6" y="579" font-size="12">call. Genesis accounts win;</text>
+<text class="body" x="513.6" y="596" font-size="12">no cluster set: a no-op.</text>
+<text class="eyebrow" x="513.6" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="509.6" y="640" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="519.6" y="657" font-size="12.5">once</text>
+<text class="label" x="519.6" y="671" font-size="10.5">per address, then resolved</text>
+<rect class="raised" x="509.6" y="684" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="519.6" y="701" font-size="12.5">one request</text>
+<text class="label" x="519.6" y="715" font-size="10.5">64 locks fit the RPC's 100</text>
+<rect class="raised" x="509.6" y="728" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="519.6" y="745" font-size="12.5">10 s</text>
+<text class="label" x="519.6" y="759" font-size="10.5">CLUSTER_TIMEOUT per request</text>
+<rect class="fail" x="509.6" y="846" width="192" height="48" rx="3"/>
+<text class="code strong coral-t" x="519.6" y="866" font-size="12.5">503 · no fee</text>
+<text class="label" x="519.6" y="883" font-size="10.5">the cluster did not answer</text>
+<path class="edge" d="M715.6 414H724.4" marker-end="url(#a-accent)"/>
+<rect class="panel" x="726.4" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="742.4" y="420">4</text>
+<text class="code strong" x="770.4" y="418" font-size="19">budget</text>
+<text class="code-s" x="742.4" y="440">Sequencer::budget</text>
+<line class="rule" x1="742.4" y1="452" x2="926.4" y2="452"/>
+<text class="eyebrow" x="742.4" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="code text-t" x="742.4" y="494" font-size="10.5">transaction_configuration</text>
+<text class="body" x="742.4" y="511" font-size="12">reads the limits from the v1</text>
+<text class="body" x="742.4" y="528" font-size="12">message config, and</text>
+<text class="code text-t" x="742.4" y="545" font-size="10.5">calculate_fee_details</text>
+<text class="body" x="742.4" y="562" font-size="12">prices the transaction the way</text>
+<text class="body" x="742.4" y="579" font-size="12">a validator does.</text>
+<text class="eyebrow" x="742.4" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="738.4" y="640" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="748.4" y="657" font-size="12.5">150 CU</text>
+<text class="label" x="748.4" y="671" font-size="10.5">compute_unit_limit, v1 config</text>
+<rect class="raised" x="738.4" y="684" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="748.4" y="701" font-size="12.5">32 KiB</text>
+<text class="label" x="748.4" y="715" font-size="10.5">loaded accounts data limit</text>
+<rect class="raised" x="738.4" y="728" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="748.4" y="745" font-size="12.5">5000 lamports</text>
+<text class="label" x="748.4" y="759" font-size="10.5">per signature, plus any v1</text>
+<text class="label" x="748.4" y="772" font-size="10.5">priority fee</text>
+<rect class="raised" x="738.4" y="786" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="748.4" y="803" font-size="12.5">3000 CU</text>
+<text class="label" x="748.4" y="817" font-size="10.5">per builtin, legacy and v0</text>
+<rect class="fail" x="738.4" y="846" width="192" height="48" rx="3"/>
+<text class="code strong coral-t" x="748.4" y="866" font-size="12.5">400 · no fee</text>
+<text class="label" x="748.4" y="883" font-size="10.5">invalid v1 message config</text>
+<path class="edge" d="M944.4 414H953.2" marker-end="url(#a-accent)"/>
+<rect class="panel" x="955.2" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="971.2" y="420">5</text>
+<text class="code strong" x="999.2" y="418" font-size="19">process</text>
+<text class="code-s" x="971.2" y="440">Sequencer::process</text>
+<line class="rule" x1="971.2" y1="452" x2="1155.2" y2="452"/>
+<text class="eyebrow" x="971.2" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="code text-t" x="971.2" y="494" font-size="10.5">load_and_execute_</text>
+<text class="code text-t" x="971.2" y="511" font-size="10.5">sanitized_transactions</text>
+<text class="body" x="971.2" y="528" font-size="12">reads the accounts through</text>
+<text class="code text-t" x="971.2" y="545" font-size="10.5">get_account_shared_data,</text>
+<text class="body" x="971.2" y="562" font-size="12">charges the fee and runs the</text>
+<text class="body" x="971.2" y="579" font-size="12">System program's Transfer.</text>
+<text class="eyebrow" x="971.2" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="967.2" y="640" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="977.2" y="657" font-size="12.5">150 CU</text>
+<text class="label" x="977.2" y="671" font-size="10.5">consumed by a System transfer</text>
+<rect class="raised" x="967.2" y="684" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="977.2" y="701" font-size="12.5">5080</text>
+<text class="label" x="977.2" y="715" font-size="10.5">lamports per byte of rent</text>
+<rect class="raised" x="967.2" y="728" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="977.2" y="745" font-size="12.5">650240</text>
+<text class="label" x="977.2" y="759" font-size="10.5">lamports: the minimum for a</text>
+<text class="label" x="977.2" y="772" font-size="10.5">new account without data</text>
+<rect class="fail" x="967.2" y="846" width="192" height="48" rx="3"/>
+<text class="code strong coral-t" x="977.2" y="866" font-size="12.5">422 · no fee</text>
+<text class="label" x="977.2" y="883" font-size="10.5">fee payer cannot pay the fee</text>
+<path class="edge" d="M1173.2 414H1182" marker-end="url(#a-accent)"/>
+<rect class="panel" x="1184" y="384" width="216" height="524" rx="3"/>
+<text class="num" x="1200" y="420">6</text>
+<text class="code strong" x="1228" y="418" font-size="19">commit</text>
+<text class="code-s" x="1200" y="440">Sequencer::commit</text>
+<line class="rule" x1="1200" y1="452" x2="1384" y2="452"/>
+<text class="eyebrow" x="1200" y="474" font-size="10">WHAT HAPPENS</text>
+<text class="body" x="1200" y="494" font-size="12">RollupDB::commit stores the</text>
+<text class="body" x="1200" y="511" font-size="12">touched writable accounts</text>
+<text class="body" x="1200" y="528" font-size="12">and the receipt as one step.</text>
+<text class="body" x="1200" y="545" font-size="12">An account left with no</text>
+<text class="body" x="1200" y="562" font-size="12">lamports is removed.</text>
+<text class="eyebrow" x="1200" y="630" font-size="10">MAINNET LIMITS</text>
+<rect class="raised" x="1196" y="640" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="1206" y="657" font-size="12.5">one step</text>
+<text class="label" x="1206" y="671" font-size="10.5">readers never see half of it</text>
+<rect class="raised" x="1196" y="684" width="192" height="52" rx="3"/>
+<text class="code strong accent-t" x="1206" y="701" font-size="12.5">fee only</text>
+<text class="label" x="1206" y="715" font-size="10.5">kept when execution fails;</text>
+<text class="label" x="1206" y="728" font-size="10.5">the rest is undone</text>
+<rect class="raised" x="1196" y="742" width="192" height="38" rx="3"/>
+<text class="code strong accent-t" x="1206" y="759" font-size="12.5">signature</text>
+<text class="label" x="1206" y="773" font-size="10.5">receipts are keyed by it</text>
+<rect class="ok" x="1196" y="846" width="192" height="48" rx="3"/>
+<text class="code strong accent-t" x="1206" y="866" font-size="12.5">200 · receipt</text>
+<text class="label" x="1206" y="883" font-size="10.5">status executed or failed</text>
+<path class="edge" d="M1292 908V924H260"/>
+<path class="edge" d="M260 924V938" marker-end="url(#a-accent)"/>
+<path class="edge" d="M720 924V938" marker-end="url(#a-accent)"/>
+<path class="edge" d="M1292 924V938" marker-end="url(#a-accent)"/>
+<rect class="panel" x="40" y="940" width="440" height="210" rx="3"/>
+<text class="eyebrow" x="60" y="966">STATE CHANGE · RollupDB accounts</text>
+<text class="label" x="60" y="992">account</text>
+<text class="label" x="300" y="992" text-anchor="end">before</text>
+<text class="label" x="460" y="992" text-anchor="end">change</text>
+<line class="rule" x1="60" y1="1000" x2="460" y2="1000"/>
+<text class="body strong" x="60" y="1024">payer</text>
+<text class="label" x="60" y="1040">from ROLLUP_GENESIS</text>
+<text class="code text-t" x="300" y="1024" text-anchor="end" font-size="13">10000000000</text>
+<text class="code strong coral-t" x="460" y="1024" text-anchor="end" font-size="12.5">−100000000  −5000</text>
+<text class="label" x="460" y="1040" text-anchor="end">transfer, fee</text>
+<text class="body strong" x="60" y="1072">recipient</text>
+<text class="label" x="60" y="1088">pulled once, or new</text>
+<text class="label" x="300" y="1072" text-anchor="end" font-size="12">cluster copy</text>
+<text class="code strong accent-t" x="460" y="1072" text-anchor="end" font-size="12.5">+100000000</text>
+<text class="label" x="460" y="1088" text-anchor="end">transfer</text>
+<line class="rule" x1="60" y1="1104" x2="460" y2="1104"/>
+<text class="small" x="60" y="1126">The tests assert payer = 10000000000 − 100000000 − 5000.</text>
+<rect class="panel" x="500" y="940" width="440" height="210" rx="3"/>
+<text class="eyebrow" x="520" y="966">RECEIPT · HTTP 200</text>
+<text class="code text-t" x="520" y="990" font-size="12" xml:space="preserve">{</text>
+<text class="code text-t" x="520" y="1007" font-size="12" xml:space="preserve">  "signature": "&lt;first signature&gt;",</text>
+<text class="code text-t" x="520" y="1024" font-size="12" xml:space="preserve">  "version": 1,</text>
+<text class="code text-t" x="520" y="1041" font-size="12" xml:space="preserve">  "status": "executed",</text>
+<text class="code text-t" x="520" y="1058" font-size="12" xml:space="preserve">  "fee": 5000,</text>
+<text class="code text-t" x="520" y="1075" font-size="12" xml:space="preserve">  "compute_units_consumed": 150,</text>
+<text class="code text-t" x="520" y="1092" font-size="12" xml:space="preserve">  "settlement": "not_configured",</text>
+<text class="code text-t" x="520" y="1109" font-size="12" xml:space="preserve">  "sol_transaction": "&lt;base64, as submitted&gt;"</text>
+<text class="code text-t" x="520" y="1126" font-size="12" xml:space="preserve">}</text>
+<rect class="panel" x="960" y="940" width="440" height="210" rx="3"/>
+<text class="eyebrow" x="980" y="966">SETTLEMENT</text>
+<text class="body" x="980" y="992">Today every receipt carries</text>
+<text class="code accent-t" x="980" y="1012">settlement: "not_configured"</text>
+<rect class="planned" x="980" y="1028" width="400" height="106" rx="3"/>
+<text class="eyebrow amber-t" x="996" y="1050">PLANNED · MECHANISM NOT DECIDED</text>
+<text class="small" x="996" y="1072">Preferred direction: a devnet program takes control of</text>
+<text class="small" x="996" y="1089">the accounts while the rollup uses them, locking them on</text>
+<text class="small" x="996" y="1106">the cluster, and moves the final lamports between them at</text>
+<text class="small" x="996" y="1123">settlement. Until then nothing is written back or locked.</text>
+<text class="small" x="40" y="1182">Numbers from README.md and the source. HTTP statuses from frontend.rs.</text>
+<path class="edge" d="M1120 1178H1156"/>
+<text class="small" x="1164" y="1182">flow</text>
+<rect class="fail" x="1206" y="1170" width="24" height="14" rx="3"/>
+<text class="small" x="1238" y="1182">refused</text>
+<rect class="planned" x="1300" y="1170" width="24" height="14" rx="3"/>
+<text class="small" x="1332" y="1182">planned</text>
+</svg>

@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98.1"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
+serde_json.workspace = true
+solana-keypair.workspace = true
+solana-signer.workspace = true

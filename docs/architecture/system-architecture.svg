@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1160" role="img" aria-labelledby="title desc">
+<title id="title">Basic Rollup: system architecture</title>
+<desc id="desc">rollup_client signs v1 transactions and sends them over HTTP to rollup_core. Inside rollup_core the HTTP frontend passes each request to the sequencer over an mpsc channel. The sequencer runs six phases (decode, validate, load, budget, process, commit) and alone owns RollupDB, which holds accounts, transactions and resolved addresses. RollupDB pulls unseen accounts from a Solana cluster with getMultipleAccounts. The settlement boundary reports not_configured; settlement through a devnet program is planned and its mechanism is not decided.</desc>
+<style><![CDATA[
+@font-face{font-family:Inter;src:local("Inter"),url("fonts/inter.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{--bg:#f3f2eb;--panel:#faf8f1;--raised:#e9ede4;--line:#c3cdbf;--text:#243c32;--muted:#53685d;--subtle:#879e8d;--tag:#53685d;--accent:#187c5b;--accent-text:#196647;--accent-tint:rgba(52,215,161,.13);--accent-line:rgba(24,124,91,.42);--boundary:rgba(52,215,161,.045);--amber:#875c0d;--amber-text:#835716;--amber-tint:#fbedcc;--amber-line:#d9a441;--l1:#e7ebe2;--sans:Inter,Arial,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--bg)}
+@media (prefers-color-scheme:dark){:root{--bg:#111517;--panel:#191e21;--raised:#21292d;--line:#354047;--text:#edf3f3;--muted:#a9b6bc;--subtle:#8798a1;--tag:#9fadb4;--accent:#34d7a1;--accent-text:#9be8cb;--accent-tint:rgba(52,215,161,.08);--accent-line:rgba(52,215,161,.42);--boundary:rgba(52,215,161,.025);--amber:#ffb020;--amber-text:#ffbd45;--amber-tint:rgba(255,176,32,.08);--amber-line:rgba(255,176,32,.55);--l1:#14181b}}
+.bg{fill:var(--bg)}
+.panel{fill:var(--panel);stroke:var(--line)}
+.raised{fill:var(--raised);stroke:var(--line)}
+.boundary{fill:var(--boundary);stroke:var(--accent-line);stroke-width:1.2}
+.chip{fill:var(--accent-tint);stroke:var(--accent-line)}
+.planned{fill:var(--amber-tint);stroke:var(--amber-line);stroke-dasharray:6 4}
+.check{fill:var(--panel);stroke:var(--subtle);stroke-dasharray:1.5 4;stroke-linecap:round}
+.l1{fill:var(--l1);stroke:var(--line)}
+.edge{fill:none;stroke:var(--accent);stroke-width:1.6}
+.edge-planned{fill:none;stroke:var(--amber);stroke-width:1.6;stroke-dasharray:6 5}
+.edge-check{fill:none;stroke:var(--subtle);stroke-width:1.6;stroke-dasharray:1.5 4;stroke-linecap:round}
+.rule{stroke:var(--line);fill:none}
+.dot{fill:var(--accent)}
+.mk-accent{fill:var(--accent)}
+.mk-amber{fill:var(--amber)}
+.pill-planned{fill:var(--amber-tint);stroke:var(--amber-line)}
+text{font-family:var(--sans);fill:var(--text)}
+.brand{font-size:24px;font-weight:700;letter-spacing:-.7px}
+.tag{font-size:10.5px;font-weight:450;letter-spacing:.23em;fill:var(--tag)}
+.h1{font-size:30px;font-weight:600;letter-spacing:-.4px}
+.lead{font-size:15px;fill:var(--muted)}
+.eyebrow{font-size:11px;font-weight:650;letter-spacing:.15em;fill:var(--muted)}
+.h3{font-size:17px;font-weight:600}
+.body{font-size:12.5px}
+.small{font-size:12px;fill:var(--muted)}
+.label{font-size:11px;font-weight:500;fill:var(--muted)}
+.code{font-family:var(--mono);font-size:12px}
+.code-s{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.strong{font-weight:600}
+.accent-t{fill:var(--accent-text)}
+.amber-t{fill:var(--amber-text)}
+.text-t{fill:var(--text)}
+]]></style>
+<defs>
+<marker id="a-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-accent" d="M0 1L9 5L0 9z"/></marker>
+<marker id="a-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-amber" d="M0 1L9 5L0 9z"/></marker>
+</defs>
+<rect class="bg" width="1440" height="1160"/>
+
+<!-- Header: Amussis lockup -->
+<svg x="40" y="28" width="44" height="44" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ca-pin-flat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><radialGradient id="ca-core" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="7"><stop offset="0" stop-color="#f5fffb"/><stop offset="0.28" stop-color="#b8fbe1" stop-opacity="0.9"/><stop offset="0.62" stop-color="#4fe7ae" stop-opacity="0.35"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-halo" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="1.25"/></filter><linearGradient id="ca-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c6fbe5"/><stop offset="0.28" stop-color="#62eeb9"/><stop offset="0.62" stop-color="#27cf91"/><stop offset="1" stop-color="#0c895c"/></linearGradient><linearGradient id="ca-lit1" gradientUnits="userSpaceOnUse" x1="12.166" y1="36.28" x2="21.459" y2="40.263"><stop offset="0" stop-color="#c0c9cd"/><stop offset="0.12" stop-color="#9ea8ad"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#394145"/></linearGradient><radialGradient id="ca-spill" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="17"><stop offset="0" stop-color="#34d7a1" stop-opacity="0.34"/><stop offset="0.55" stop-color="#34d7a1" stop-opacity="0.1"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><linearGradient id="ca-strip" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="60"><stop offset="0" stop-color="#22b583"/><stop offset="0.4" stop-color="#55ebb4"/><stop offset="0.56" stop-color="#86f5cb"/><stop offset="0.76" stop-color="#34d7a1"/><stop offset="1" stop-color="#13895f"/></linearGradient><linearGradient id="ca-lit2" gradientUnits="userSpaceOnUse" x1="42.541" y1="40.263" x2="51.834" y2="36.28"><stop offset="0" stop-color="#9aa4a8"/><stop offset="0.12" stop-color="#889297"/><stop offset="0.4" stop-color="#717b80"/><stop offset="0.75" stop-color="#5e676c"/><stop offset="1" stop-color="#525b60"/></linearGradient><linearGradient id="ca-pin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><linearGradient id="ca-lit3" gradientUnits="userSpaceOnUse" x1="32" y1="4" x2="32" y2="16"><stop offset="0" stop-color="#bfc8cc"/><stop offset="0.12" stop-color="#9da7ac"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#3a4246"/></linearGradient><radialGradient id="ca-bloom" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="15" gradientTransform="translate(0 20) scale(1 0.5)"><stop offset="0" stop-color="#4ff0b5" stop-opacity="0.55"/><stop offset="0.5" stop-color="#34d7a1" stop-opacity="0.18"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><radialGradient id="ca-flash" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="26" gradientTransform="translate(0 15.231) scale(1 0.619)"><stop offset="0" stop-color="#f3fffa" stop-opacity="0.95"/><stop offset="0.32" stop-color="#90f7cf" stop-opacity="0.45"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-shadow" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feOffset dx="0.8" dy="1.3"/><feGaussianBlur stdDeviation="1"/></filter></defs><g class="ca-shadow" filter="url(#ca-shadow)" opacity="0.34"><g class="ca-part ca-bar"><path d="M16 36L48 36L48 44L16 44Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd"/></g></g><g class="ca-part ca-bar"><rect x="12.4" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/><rect x="47.6" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-cap"><rect x="23.957" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/><rect x="38.243" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-bar"><path d="M16 36L48 36M48 36L48 44M48 44L16 44M16 44L16 36" fill="none" stroke="#05241a" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16M28.857 16L13 60M13 60L2 60M2 60L20.857 16" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60M51 60L35.143 16M35.143 16L43.143 16M43.143 16L62 60" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4M38 4L43.143 16M43.143 16L20.857 16M20.857 16L26 4" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-bar"><polygon points="16,36 48,36 48,44 16,44" fill="#0d3529"/><g class="ca-lit"><polygon points="16,36 48,36 48,44 16,44" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="16,36 48,36 48,44 16,44" fill="url(#ca-bar)"/><path d="M16.8 36.8L47.2 36.8M16.8 43.2L16.8 36.8" fill="none" stroke="#effff8" stroke-opacity=".75" stroke-width=".42" stroke-linecap="round"/><path d="M47.2 36.8L47.2 43.2M47.2 43.2L16.8 43.2" fill="none" stroke="#06593b" stroke-opacity=".6" stroke-width=".42" stroke-linecap="round"/><circle cx="32" cy="40" r="7" fill="url(#ca-core)"/><rect x="29.5" y="37.5" width="5" height="5" rx=".7" fill="none" stroke="#e6fff4" stroke-opacity=".75" stroke-width=".45"/><rect x="30.7" y="38.7" width="2.6" height="2.6" rx=".45" fill="#f5fffb"/></g></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd" fill="#596166"/><polygon points="20.857,16 28.857,16 26.722,17.5 21.846,17.5" fill="#d2d9dd"/><polygon points="28.857,16 13,60 11.946,58.5 26.722,17.5" fill="#333b3f"/><polygon points="13,60 2,60 4.275,58.5 11.946,58.5" fill="#333b3f"/><polygon points="2,60 20.857,16 21.846,17.5 4.275,58.5" fill="#d6dde1"/><path d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-lit1)"/><path d="M21.728 17.32L26.978 17.32M4.002 58.68L21.728 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="21.688" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="8.67" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#0d3529"/><g class="ca-lit"><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="62,60 51,60 52.054,58.5 59.725,58.5" fill="#333b3f"/><polygon points="51,60 35.143,16 37.278,17.5 52.054,58.5" fill="#838c91"/><polygon points="35.143,16 43.143,16 42.154,17.5 37.278,17.5" fill="#d2d9dd"/><polygon points="43.143,16 62,60 59.725,58.5 42.154,17.5" fill="#5b6368"/><path d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-lit2)"/><path d="M37.022 17.32L42.272 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="42.313" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="55.33" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#0d3529"/><g class="ca-lit"><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="26,4 38,4 37.011,5.5 26.989,5.5" fill="#d2d9dd"/><polygon points="38,4 43.143,16 40.868,14.5 37.011,5.5" fill="#5b6368"/><polygon points="43.143,16 20.857,16 23.132,14.5 40.868,14.5" fill="#333b3f"/><polygon points="20.857,16 26,4 26.989,5.5 23.132,14.5" fill="#d6dde1"/><path d="M26.989 5.5L37.011 5.5L40.868 14.5L23.132 14.5Z" fill-rule="evenodd" fill="url(#ca-lit3)"/><path d="M26.87 5.32L37.13 5.32M22.859 14.68L26.87 5.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#0d3529"/><g class="ca-lit"><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="url(#ca-strip)"/></g></g><ellipse class="ca-glow ca-bloom" cx="32" cy="40" rx="15" ry="7.5" fill="url(#ca-bloom)"/><ellipse class="ca-flash" cx="32" cy="40" rx="26" ry="16.1" fill="url(#ca-flash)" opacity="0"/></svg>
+<text class="brand" x="96" y="55">Amussis</text>
+<text class="tag" x="97" y="73">AGENTIC ENGINEERING</text>
+<text class="eyebrow" x="1400" y="48" text-anchor="end">BASIC ROLLUP</text>
+<text class="small" x="1400" y="70" text-anchor="end">Agave SVM 4.4.1 · Solana Mainnet parameters</text>
+<line class="rule" x1="40" y1="96" x2="1400" y2="96"/>
+<text class="h1" x="40" y="148">System architecture</text>
+<text class="lead" x="40" y="178">One Rust server holds the HTTP frontend, the sequencer, account state and receipts, and the settlement boundary. A separate client signs v1 transactions.</text>
+
+<!-- rollup_core process boundary -->
+<rect class="boundary" x="330" y="216" width="1070" height="644" rx="6"/>
+<text class="code strong accent-t" x="354" y="244" font-size="13">rollup_core</text>
+<text class="small" x="458" y="244">one process · HTTP on 127.0.0.1:8080 (ROLLUP_BIND) · state in memory, reset on restart</text>
+
+<!-- rollup_client -->
+<rect class="panel" x="40" y="290" width="250" height="330" rx="3"/>
+<text class="eyebrow" x="60" y="318">SEPARATE PROCESS</text>
+<text class="code strong" x="60" y="344" font-size="17">rollup_client</text>
+<circle class="dot" cx="66" cy="372" r="2.5"/><text class="body" x="76" y="376">reads the payer keypair file</text>
+<circle class="dot" cx="66" cy="396" r="2.5"/><text class="code" x="76" y="400">GET /get_latest_blockhash</text>
+<circle class="dot" cx="66" cy="420" r="2.5"/><text class="body" x="76" y="424">compiles a v1 Message with</text>
+<rect class="raised" x="76" y="434" width="198" height="62" rx="3"/>
+<text class="code-s accent-t" x="88" y="454">TRANSFER_CONFIG</text>
+<text class="code-s text-t" x="88" y="471">compute_unit_limit 150</text>
+<text class="label" x="88" y="487">loaded accounts data 32 KiB</text>
+<circle class="dot" cx="66" cy="516" r="2.5"/><text class="body" x="76" y="520">signs a VersionedTransaction</text>
+<circle class="dot" cx="66" cy="540" r="2.5"/><text class="body" x="76" y="544">wincode bytes, then base64</text>
+<circle class="dot" cx="66" cy="564" r="2.5"/><text class="code" x="76" y="568">POST /submit_transaction</text>
+<circle class="dot" cx="66" cy="588" r="2.5"/><text class="code" x="76" y="592">POST /get_transaction</text>
+
+<!-- Genesis -->
+<rect class="panel" x="40" y="650" width="250" height="140" rx="3"/>
+<text class="eyebrow" x="60" y="678">STARTUP</text>
+<text class="h3" x="60" y="702">Genesis JSON</text>
+<text class="code accent-t" x="60" y="724">ROLLUP_GENESIS</text>
+<text class="small" x="60" y="746">funds System-owned accounts;</text>
+<text class="small" x="60" y="764">optional when a cluster is set</text>
+<path class="edge" d="M290 720H698" marker-end="url(#a-accent)"/>
+<text class="code-s" x="495" y="710" text-anchor="middle">load_genesis</text>
+
+<!-- Client <-> frontend -->
+<path class="edge" d="M290 432H358" marker-end="url(#a-accent)"/>
+<path class="edge" d="M360 462H292" marker-end="url(#a-accent)"/>
+<text class="label" x="325" y="424" text-anchor="middle">HTTP</text>
+<text class="label" x="325" y="480" text-anchor="middle">JSON</text>
+
+<!-- HTTP frontend -->
+<rect class="panel" x="360" y="290" width="260" height="330" rx="3"/>
+<text class="eyebrow" x="380" y="318">FRONTEND.RS · ACTIX-WEB</text>
+<text class="h3" x="380" y="344">HTTP frontend</text>
+<text class="small" x="380" y="366">each route sends a SequencerMessage</text>
+<text class="code" x="380" y="394">GET /get_latest_blockhash</text>
+<text class="label accent-t" x="380" y="410">→ Blockhash</text>
+<text class="code" x="380" y="434">GET /get_account/{address}</text>
+<text class="label accent-t" x="380" y="450">→ Balance, pulls the account if unseen</text>
+<text class="code" x="380" y="474">POST /get_transaction</text>
+<text class="label accent-t" x="380" y="490">→ Transaction</text>
+<text class="code" x="380" y="514">POST /submit_transaction</text>
+<text class="label accent-t" x="380" y="530">→ Submit, waits for the receipt</text>
+<text class="code" x="380" y="554">GET /</text>
+<text class="label" x="380" y="570">health, answered here</text>
+<line class="rule" x1="380" y1="584" x2="600" y2="584"/>
+<text class="small" x="380" y="604">JSON body limit 32 KiB</text>
+
+<!-- Frontend <-> sequencer -->
+<path class="edge" d="M620 432H698" marker-end="url(#a-accent)"/>
+<path class="edge" d="M700 462H622" marker-end="url(#a-accent)"/>
+<text class="code-s" x="660" y="410" text-anchor="middle" font-size="10">mpsc::</text>
+<text class="code-s" x="660" y="423" text-anchor="middle" font-size="10">channel(128)</text>
+<text class="code-s" x="660" y="480" text-anchor="middle" font-size="10">oneshot</text>
+
+<!-- Sequencer -->
+<rect class="panel" x="700" y="290" width="670" height="290" rx="3"/>
+<text class="eyebrow" x="720" y="318">SEQUENCER.RS</text>
+<text class="h3" x="720" y="344" font-size="20">Sequencer</text>
+<text class="small" x="720" y="368" font-size="13">Sequencer::run, on the thread named sequencer, takes one SequencerMessage at a time.</text>
+<text class="small" x="720" y="386" font-size="13">It alone owns RollupDB, so no reader sees a partly committed transaction.</text>
+<text class="body strong" x="720" y="416">Submit runs execute(): six phases, in order</text>
+<g>
+<rect class="chip" x="720" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="729" y="442" font-size="10">1</text><text class="code strong" x="766" y="457" text-anchor="middle" font-size="13.5">decode</text>
+<rect class="chip" x="826" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="835" y="442" font-size="10">2</text><text class="code strong" x="872" y="457" text-anchor="middle" font-size="13.5">validate</text>
+<rect class="chip" x="932" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="941" y="442" font-size="10">3</text><text class="code strong" x="978" y="457" text-anchor="middle" font-size="13.5">load</text>
+<rect class="chip" x="1038" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="1047" y="442" font-size="10">4</text><text class="code strong" x="1084" y="457" text-anchor="middle" font-size="13.5">budget</text>
+<rect class="chip" x="1144" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="1153" y="442" font-size="10">5</text><text class="code strong" x="1190" y="457" text-anchor="middle" font-size="13.5">process</text>
+<rect class="chip" x="1250" y="428" width="92" height="46" rx="3"/><text class="label strong accent-t" x="1259" y="442" font-size="10">6</text><text class="code strong" x="1296" y="457" text-anchor="middle" font-size="13.5">commit</text>
+<path class="edge" d="M813 451H824" marker-end="url(#a-accent)"/>
+<path class="edge" d="M919 451H930" marker-end="url(#a-accent)"/>
+<path class="edge" d="M1025 451H1036" marker-end="url(#a-accent)"/>
+<path class="edge" d="M1131 451H1142" marker-end="url(#a-accent)"/>
+<path class="edge" d="M1237 451H1248" marker-end="url(#a-accent)"/>
+<text class="label" x="766" y="492" text-anchor="middle">size limit</text>
+<text class="label" x="872" y="492" text-anchor="middle">signatures, replay</text>
+<text class="label" x="978" y="492" text-anchor="middle">pull unseen</text>
+<text class="label" x="1084" y="492" text-anchor="middle">compute, fee</text>
+<text class="label" x="1190" y="492" text-anchor="middle">SVM executes</text>
+<text class="label" x="1296" y="492" text-anchor="middle">state + receipt</text>
+</g>
+<rect class="raised" x="720" y="506" width="630" height="58" rx="3"/>
+<text class="code text-t" x="734" y="528" font-size="11.5">TransactionBatchProcessor</text>
+<text class="label" x="734" y="546">Agave SVM 4.4.1 · System builtin</text>
+<line class="rule" x1="942" y1="516" x2="942" y2="554"/>
+<text class="code text-t" x="956" y="528" font-size="11.5">recent_blockhashes</text>
+<text class="label" x="956" y="546">the last 150 issued</text>
+<line class="rule" x1="1146" y1="516" x2="1146" y2="554"/>
+<text class="code text-t" x="1160" y="528" font-size="11.5">feature_set</text>
+<text class="label" x="1160" y="546">Agave 4.4.1 minus 37 inactive</text>
+
+<!-- Sequencer <-> RollupDB and settlement -->
+<path class="edge" d="M760 580V638" marker-end="url(#a-accent)"/>
+<text class="code-s" x="768" y="614">pull()</text>
+<path class="edge" d="M840 580V638" marker-end="url(#a-accent)"/>
+<text class="code-s" x="848" y="614">commit()</text>
+<path class="edge" d="M930 640V582" marker-end="url(#a-accent)"/>
+<text class="code-s" x="938" y="614">get_account_shared_data</text>
+<path class="edge" d="M1250 580V638" marker-end="url(#a-accent)"/>
+<text class="code-s" x="1258" y="614">SettlementStatus</text>
+
+<!-- RollupDB -->
+<rect class="panel" x="700" y="640" width="400" height="190" rx="3"/>
+<text class="eyebrow" x="720" y="668">ROLLUPDB.RS · OWNED BY THE SEQUENCER</text>
+<text class="h3" x="720" y="694">RollupDB</text>
+<text class="small" x="1080" y="694" text-anchor="end">in memory, reset on restart</text>
+<rect class="raised" x="720" y="706" width="360" height="34" rx="3"/>
+<text class="body strong" x="732" y="728">accounts</text>
+<text class="code-s" x="826" y="728">HashMap&lt;Pubkey, AccountSharedData&gt;</text>
+<rect class="raised" x="720" y="746" width="360" height="34" rx="3"/>
+<text class="body strong" x="732" y="768">transactions</text>
+<text class="code-s" x="826" y="768">HashMap&lt;Signature, TransactionReceipt&gt;</text>
+<rect class="raised" x="720" y="786" width="360" height="34" rx="3"/>
+<text class="body strong" x="732" y="808">resolved</text>
+<text class="code-s" x="826" y="808">HashSet&lt;Pubkey&gt; · never pulled twice</text>
+
+<!-- Settlement boundary -->
+<rect class="panel" x="1130" y="640" width="240" height="190" rx="3"/>
+<text class="eyebrow" x="1150" y="668">SETTLE.RS</text>
+<text class="h3" x="1150" y="694">Settlement boundary</text>
+<text class="code-s text-t" x="1150" y="718">SettlementStatus::NotConfigured</text>
+<text class="small" x="1150" y="744">Every receipt reports</text>
+<text class="code-s accent-t" x="1150" y="762">settlement: "not_configured"</text>
+<text class="small" x="1150" y="788">No settlement program, escrow</text>
+<text class="small" x="1150" y="806">or bridge yet.</text>
+
+<!-- Links to the cluster -->
+<path class="edge" d="M900 910V832" marker-end="url(#a-accent)"/>
+<text class="code-s accent-t" x="912" y="878">getMultipleAccounts</text>
+<text class="label" x="912" y="894">each unseen account, once</text>
+<path class="edge-planned" d="M1250 830V908" marker-end="url(#a-amber)"/>
+<text class="label amber-t" x="1240" y="882" text-anchor="end">settlement</text>
+<rect class="pill-planned" x="1260" y="870" width="66" height="18" rx="3"/>
+<text class="label strong amber-t" x="1293" y="883" text-anchor="middle" font-size="9.5" letter-spacing=".12em">PLANNED</text>
+
+<!-- Solana cluster (L1) -->
+<rect class="l1" x="40" y="910" width="1360" height="190" rx="3"/>
+<text class="eyebrow" x="64" y="938">LAYER 1</text>
+<text class="h3" x="64" y="966" font-size="20">Solana cluster</text>
+<text class="small" x="64" y="988">devnet, Mainnet or a local validator</text>
+<text class="code accent-t" x="64" y="1010" font-size="11.5">ROLLUP_CLUSTER_URL</text>
+<text class="small" x="64" y="1028">unset: no pulling, genesis only</text>
+
+<rect class="check" x="360" y="930" width="300" height="150" rx="3"/>
+<text class="eyebrow" x="378" y="954">CHECKS, NOT AT RUNTIME</text>
+<text class="code" x="378" y="976">cargo xtask mainnet</text>
+<text class="small" x="378" y="994">feature snapshot and rent vs Mainnet</text>
+<text class="code" x="378" y="1016">cargo xtask live</text>
+<text class="small" x="378" y="1034">a pulled account vs a real cluster</text>
+
+<rect class="chip" x="700" y="930" width="400" height="150" rx="3"/>
+<text class="eyebrow accent-t" x="718" y="954">IMPLEMENTED · ACCOUNT PULLING</text>
+<text class="code strong" x="718" y="976" font-size="13">RollupDB::pull</text>
+<text class="small" x="718" y="996">copies each unseen account once, during load or for</text>
+<text class="small" x="718" y="1014">GET /get_account; later cluster changes are not seen.</text>
+<text class="small" x="718" y="1032">CLUSTER_TIMEOUT 10 s, then HTTP 503, no fee.</text>
+<text class="small" x="718" y="1050">Nothing is written back and nothing locks it there.</text>
+
+<rect class="planned" x="1130" y="930" width="240" height="150" rx="3"/>
+<text class="eyebrow amber-t" x="1148" y="954">PLANNED · NOT DECIDED</text>
+<text class="h3" x="1148" y="976" font-size="14">Settlement program</text>
+<text class="small" x="1148" y="996">Preferred: a devnet program</text>
+<text class="small" x="1148" y="1014">locks the accounts while the</text>
+<text class="small" x="1148" y="1032">rollup uses them, then moves</text>
+<text class="small" x="1148" y="1050">the final lamports between</text>
+<text class="small" x="1148" y="1068">them at settlement.</text>
+
+<!-- Legend -->
+<path class="edge" d="M40 1130H76"/>
+<text class="small" x="84" y="1134">implemented</text>
+<path class="edge-planned" d="M178 1130H214"/>
+<text class="small" x="222" y="1134">planned</text>
+<path class="edge-check" d="M296 1130H332"/>
+<text class="small" x="340" y="1134">run by cargo xtask, not by the server</text>
+<text class="small" x="1400" y="1134" text-anchor="end">Labels use the names in rollup_core/src and rollup_client/src.</text>
+</svg>

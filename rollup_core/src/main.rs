@@ -1,105 +1,73 @@
-use std::thread;
+use std::{env, path::Path, thread};
 
 use actix_web::{web, App, HttpServer};
-use async_channel;
-use frontend::FrontendMessage;
-use rollupdb::{RollupDB, RollupDBMessage};
-use solana_sdk::transaction::Transaction;
-use tokio::runtime::Builder;
-use crossbeam;
+use anyhow::{anyhow, ensure, Context, Result};
+use tokio::sync::mpsc;
+
+use crate::{frontend::Frontend, rollupdb::RollupDB, sequencer::Sequencer};
+
 mod frontend;
 mod rollupdb;
 mod sequencer;
 mod settle;
 
-// #[actix_web::main]
-fn main() {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
+#[actix_web::main]
+async fn main() -> Result<()> {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+    let genesis = env::var("ROLLUP_GENESIS").ok();
+    let cluster_url = env::var("ROLLUP_CLUSTER_URL").ok();
+    ensure!(
+        genesis.is_some() || cluster_url.is_some(),
+        "set ROLLUP_GENESIS to a genesis JSON file, ROLLUP_CLUSTER_URL to a Solana RPC URL \
+         to pull accounts from, or both"
+    );
+    let bind = env::var("ROLLUP_BIND").unwrap_or_else(|_| "127.0.0.1:8080".into());
 
-    log::info!("starting HTTP server at http://localhost:8080");
-
-
-    let (sequencer_sender, sequencer_receiver) = crossbeam::channel::unbounded::<Transaction>();
-    let (rollupdb_sender, rollupdb_receiver) = crossbeam::channel::unbounded::<RollupDBMessage>();
-    
-    // let (sequencer_sender, sequencer_receiver) = async_channel::bounded::<Transaction>(100); // Channel for communication between frontend and sequencer
-    // let (rollupdb_sender, rollupdb_receiver) = async_channel::unbounded::<RollupDBMessage>(); // Channel for communication between sequencer and accountsdb
-    let (frontend_sender, frontend_receiver) = async_channel::unbounded::<FrontendMessage>(); // Channel for communication between data availability layer and frontend
-    // std::thread::spawn(sequencer::run(sequencer_receiver, rollupdb_sender.clone()));
-    
-    // let rt = Builder::new()
-    //     .threaded_scheduler()
-    //     .enable_all()
-    //     .build()
-    //     .unwrap();
-    let db_sender2 = rollupdb_sender.clone();
-    let fe_2 = frontend_sender.clone();
-    
-    
-    let asdserver_thread = thread::spawn(|| {
-        let rt = Builder::new_multi_thread()
-            .worker_threads(4)
-            .build()
-            .unwrap();
-
-
-
-        rt.block_on(async {sequencer::run(sequencer_receiver, db_sender2).unwrap()});
-        rt.spawn(RollupDB::run(rollupdb_receiver, fe_2));
-    });
-    // Create sequencer task
-    // tokio::spawn(sequencer::run(sequencer_receiver, rollupdb_sender.clone()));
-    // tokio::task::spawn_blocking(|| sequencer::run(sequencer_receiver, rollupdb_sender.clone()) ).await.unwrap();
-    // tokio::task::block_in_place(|| sequencer::run(sequencer_receiver, rollupdb_sender.clone()) ).await.unwrap();
-
-    // Create rollup db task (accounts + transactions)
-    // tokio::spawn(RollupDB::run(rollupdb_receiver, frontend_sender.clone()));
-
-    // let frontend_receiver_mutex = Arc::new(Mutex::new(frontend_receiver));
-
-     // Spawn the Actix Web server in a separate thread
-    let server_thread = thread::spawn(|| {
-            // Create a separate Tokio runtime for Actix Web
-        let rt2 = Builder::new_multi_thread()
-            .worker_threads(4)
-            .enable_io()
-            .build()
-            .unwrap();
-
-        // Create frontend server
-        rt2.block_on(async {HttpServer::new(move || {
-            App::new()
-                .app_data(web::Data::new(sequencer_sender.clone()))
-                .app_data(web::Data::new(rollupdb_sender.clone()))
-                .app_data(web::Data::new(frontend_sender.clone()))
-                .app_data(web::Data::new(frontend_receiver.clone()))
-                .route("/", web::get().to(frontend::test))
-                .route(
-                    "/get_transaction",
-                    web::post().to(frontend::get_transaction),
-                )
-                .route(
-                    "/submit_transaction",
-                    web::post().to(frontend::submit_transaction),
-                )
-            // .service(
-            //     web::resource("/submit_transaction")
-            //         .route(web::post().to(frontend::submit_transaction)),
-            // )
-        })
-        .worker_max_blocking_threads(2)
-        .bind("127.0.0.1:8080")
-        .unwrap()
-        .run()
-        .await
-        .unwrap();
-        // tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-        });
-        });
-        server_thread.join().unwrap();
-
-    // rt.shutdown_timeout(std::time::Duration::from_secs(20));
-
-
-    // Ok(())
+    let mut db = RollupDB::new(cluster_url.as_deref());
+    if let Some(genesis) = &genesis {
+        db.load_genesis(Path::new(genesis))?;
+    }
+    let sequencer = Sequencer::new(db)?;
+    let (sender, receiver) = mpsc::channel(128);
+    let frontend = web::Data::new(Frontend { sequencer: sender });
+    let server = HttpServer::new(move || {
+        App::new()
+            .app_data(frontend.clone())
+            .app_data(web::JsonConfig::default().limit(32 * 1024))
+            .route("/", web::get().to(frontend::health))
+            .route(
+                "/get_latest_blockhash",
+                web::get().to(frontend::get_latest_blockhash),
+            )
+            .route(
+                "/get_account/{address}",
+                web::get().to(frontend::get_account),
+            )
+            .route(
+                "/get_transaction",
+                web::post().to(frontend::get_transaction),
+            )
+            .route(
+                "/submit_transaction",
+                web::post().to(frontend::submit_transaction),
+            )
+    })
+    .bind(&bind)
+    .with_context(|| format!("binding HTTP server to {bind}"))?;
+    // Agave: `BankingStage::spawn_internal_central`, starts the scheduler thread and
+    // its worker threads. The rollup's one thread is both.
+    // https://github.com/anza-xyz/agave/blob/v4.4.1/core/src/banking_stage.rs#L509
+    let worker = thread::Builder::new()
+        .name("sequencer".into())
+        .spawn(move || sequencer.run(receiver))?;
+    log::info!(
+        "SOL-transfer demo listening at http://{bind}; in-memory state, accounts pulled from {}, \
+         L1 settlement not configured",
+        cluster_url.as_deref().unwrap_or("genesis only")
+    );
+    let result = server.run().await;
+    worker
+        .join()
+        .map_err(|_| anyhow!("sequencer thread panicked"))?;
+    result.context("HTTP server stopped with an error")
 }

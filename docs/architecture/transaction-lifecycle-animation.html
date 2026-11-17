@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transaction Lifecycle Animation</title>
+<meta name="description" content="Basic Rollup: one v1 SOL transfer through rollup_core, step by step.">
+<script>
+  // Theme before first paint: ?theme=light|dark wins, then the saved choice, then the system.
+  (function () {
+    var choice = null;
+    try { choice = new URLSearchParams(location.search).get('theme'); } catch (e) {}
+    if (!choice) { try { choice = localStorage.getItem('basic-rollup-theme'); } catch (e) {} }
+    if (choice === 'light' || choice === 'dark') document.documentElement.setAttribute('data-theme', choice);
+  })();
+</script>
+<style>
+@font-face{font-family:Inter;src:local("Inter"),url("fonts/inter.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{color-scheme:light;--bg:#f3f2eb;--panel:#faf8f1;--raised:#e9ede4;--line:#c3cdbf;--text:#243c32;--muted:#53685d;--subtle:#879e8d;--tag:#53685d;--accent:#187c5b;--accent-fill:#34d7a1;--accent-text:#196647;--accent-tint:rgba(52,215,161,.13);--accent-line:rgba(24,124,91,.42);--accent-ink:#101b17;--glow:rgba(24,124,91,.28);--amber:#875c0d;--amber-text:#835716;--amber-tint:#fbedcc;--amber-line:#d9a441;--coral:#871f0d;--l1:#e7ebe2;--shadow:0 6px 32px #193a2820;--sans:Inter,Arial,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#111517;--panel:#191e21;--raised:#21292d;--line:#354047;--text:#edf3f3;--muted:#a9b6bc;--subtle:#8798a1;--tag:#9fadb4;--accent:#34d7a1;--accent-fill:#34d7a1;--accent-text:#9be8cb;--accent-tint:rgba(52,215,161,.08);--accent-line:rgba(52,215,161,.42);--accent-ink:#101b17;--glow:rgba(52,215,161,.35);--amber:#ffb020;--amber-text:#ffbd45;--amber-tint:rgba(255,176,32,.08);--amber-line:rgba(255,176,32,.55);--coral:#ff5a3d;--l1:#14181b;--shadow:0 6px 32px #0005}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#111517;--panel:#191e21;--raised:#21292d;--line:#354047;--text:#edf3f3;--muted:#a9b6bc;--subtle:#8798a1;--tag:#9fadb4;--accent:#34d7a1;--accent-fill:#34d7a1;--accent-text:#9be8cb;--accent-tint:rgba(52,215,161,.08);--accent-line:rgba(52,215,161,.42);--accent-ink:#101b17;--glow:rgba(52,215,161,.35);--amber:#ffb020;--amber-text:#ffbd45;--amber-tint:rgba(255,176,32,.08);--amber-line:rgba(255,176,32,.55);--coral:#ff5a3d;--l1:#14181b;--shadow:0 6px 32px #0005}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--accent-fill);outline-offset:4px}
+code{font-family:var(--mono);font-size:.92em}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+.site{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:78px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:12px;font-size:20px;letter-spacing:-.7px;font-weight:700;white-space:nowrap}
+.brand svg{width:34px;height:34px;display:block}
+.brand small{display:block;font-size:10.5px;font-weight:450;letter-spacing:.23em;color:var(--tag);margin-top:1px}
+.segmented{display:inline-flex;border:1px solid var(--line);border-radius:3px;padding:2px;gap:2px;background:var(--panel)}
+.segmented button{border:0;background:transparent;padding:6px 12px;border-radius:2px;font-size:13px;font-weight:600;color:var(--muted)}
+.segmented button[aria-pressed="true"]{background:var(--accent-tint);color:var(--accent-text)}
+.intro{padding:34px 0 22px}
+.eyebrow{font-size:12px;font-weight:650;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+h1{font-size:clamp(28px,4vw,38px);line-height:1.15;letter-spacing:-.5px;font-weight:600;margin:0 0 10px}
+.lead{color:var(--muted);max-width:72ch;margin:0}
+.stage-card{border:1px solid var(--line);border-radius:3px;background:var(--bg);box-shadow:var(--shadow)}
+.stage-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#stage{display:block;width:100%;min-width:820px;height:auto}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel)}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 14px;border-radius:3px;border:1px solid var(--line);background:transparent;font-size:14px;font-weight:650;white-space:nowrap}
+.btn:hover{border-color:var(--accent-line)}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.btn-primary{background:linear-gradient(110deg,#28bb8c,#49e4b0);border-color:transparent;color:#101b17;min-width:104px;justify-content:center}
+.btn-primary:hover{filter:brightness(1.06)}
+.progress{flex:1 1 220px;min-width:160px;display:flex;flex-direction:column;gap:6px}
+.progress-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--muted)}
+.progress-row b{color:var(--text);font-weight:600}
+.bar{height:4px;background:var(--raised);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent-fill);transition:width .35s ease}
+.explain{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;margin:16px 0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:20px 22px}
+.kicker{font-size:12px;font-weight:650;letter-spacing:.15em;text-transform:uppercase;color:var(--accent-text);margin:0 0 6px}
+.kicker.planned{color:var(--amber-text)}
+.caption h2{font-size:22px;line-height:1.25;font-weight:600;margin:0 0 10px;letter-spacing:-.3px}
+.caption p{margin:0 0 12px;color:var(--text);font-size:15px}
+.caption .ref{font-size:13px;color:var(--muted);margin:0}
+.limits h3{font-size:12px;font-weight:650;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.limits ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.limits li{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:baseline;padding:10px 12px;background:var(--raised);border:1px solid var(--line);border-radius:3px}
+.limits li b{font-family:var(--mono);font-size:14px;color:var(--accent-text);white-space:nowrap}
+.limits li span{font-size:13.5px;color:var(--muted)}
+.limits .none{color:var(--muted);font-size:14px}
+.timeline{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.timeline button{border:1px solid var(--line);background:var(--panel);border-radius:3px;padding:6px 10px;font-size:13px;font-weight:600;color:var(--muted)}
+.timeline button.mono{font-family:var(--mono);font-weight:600}
+.timeline button.seen{color:var(--text)}
+.timeline button[aria-current="step"]{background:var(--accent-tint);border-color:var(--accent-line);color:var(--accent-text)}
+.timeline button.planned[aria-current="step"]{background:var(--amber-tint);border-color:var(--amber-line);color:var(--amber-text)}
+.notes{color:var(--muted);font-size:13.5px;padding:4px 0 40px;display:grid;gap:6px}
+.notes p{margin:0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:28px;height:0;border-top:2px solid var(--accent)}
+.legend i.planned{border-top:2px dashed var(--amber)}
+.legend i.refused{width:14px;height:14px;border:1px solid var(--line);background:transparent;border-radius:2px;border-top-width:1px}
+@media (max-width:860px){.explain{grid-template-columns:1fr}.site{min-height:66px}.brand{font-size:18px}}
+@media (max-width:520px){.brand small{display:none}.progress-row span{display:none}.controls .btn span{display:none}.btn{padding:8px 11px}}
+
+/* Stage */
+#stage text{font-family:var(--sans);fill:var(--text)}
+#stage .mono{font-family:var(--mono)}
+#stage .muted{fill:var(--muted)}
+#stage .acc{fill:var(--accent-text)}
+#stage .amb{fill:var(--amber-text)}
+#stage .cor{fill:var(--coral)}
+#stage .t-title{font-size:14px;font-weight:600}
+#stage .t-sub{font-size:11px;fill:var(--muted)}
+#stage .t-eye{font-size:9.5px;font-weight:650;letter-spacing:.15em;fill:var(--muted)}
+.box{fill:var(--panel);stroke:var(--line);transition:stroke .3s,filter .3s}
+.node.focus>.box{stroke:var(--accent);stroke-width:1.6;filter:drop-shadow(0 0 7px var(--glow))}
+.l1box{fill:var(--l1);stroke:var(--line);transition:stroke .3s}
+.node.focus>.l1box{stroke:var(--accent)}
+.raised{fill:var(--raised);stroke:var(--line)}
+.conn{fill:none;stroke:var(--subtle);stroke-width:1.4;opacity:.55;marker-end:url(#m-dim);transition:opacity .3s,stroke .3s}
+.conn.focus{stroke:var(--accent);stroke-width:2;opacity:1;marker-end:url(#m-accent)}
+.conn.planned{stroke:var(--amber);stroke-dasharray:6 5;opacity:.7;marker-end:url(#m-amber)}
+.conn.planned.focus{opacity:1;stroke-width:2}
+.clabel{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.route rect{fill:transparent;stroke:transparent;transition:fill .3s}
+.route text{font-family:var(--mono);font-size:10.5px;fill:var(--muted);transition:fill .3s}
+.route.focus rect{fill:var(--accent-tint);stroke:var(--accent-line)}
+.route.focus text{fill:var(--accent-text)}
+.txrow{opacity:.32;transition:opacity .4s}
+.txrow.on{opacity:1}
+.txrow circle{fill:none;stroke:var(--muted);transition:fill .3s}
+.txrow.on circle{fill:var(--accent-fill);stroke:var(--accent)}
+.txrow text{font-family:var(--mono);font-size:10.5px}
+.chip rect{fill:var(--raised);stroke:var(--line);transition:fill .3s,stroke .3s}
+.chip .n{font-size:9.5px;font-weight:700;fill:var(--muted)}
+.chip .nm{font-family:var(--mono);font-size:12.5px;font-weight:600;fill:var(--muted);transition:fill .3s}
+.chip.done rect{fill:var(--accent-tint);stroke:var(--accent-line)}
+.chip.done .nm,.chip.done .n{fill:var(--accent-text)}
+.chip.active rect{fill:var(--accent-fill);stroke:var(--accent-fill);animation:pulse 1.6s ease-in-out infinite}
+.chip.active .nm,.chip.active .n{fill:var(--accent-ink)}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 0 var(--glow))}50%{filter:drop-shadow(0 0 9px var(--glow))}}
+.gist{font-size:10.5px;fill:var(--muted)}
+#ph-track{stroke:var(--line);stroke-width:2}
+#ph-dot{fill:var(--accent-fill);opacity:0;transition:transform .5s ease,opacity .3s}
+#ph-dot.on{opacity:1}
+.dbrow{opacity:.38;transition:opacity .4s}
+.dbrow.on{opacity:1}
+.dbrow>rect{fill:transparent;transition:fill .3s}
+.dbrow.focus>rect{fill:var(--accent-tint)}
+.delta{opacity:0;transition:opacity .5s}
+.delta.on{opacity:1}
+#db-tx{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+#db-tx.on{fill:var(--accent-text)}
+#receipt-json{opacity:0;transition:opacity .5s}
+#receipt-json text{white-space:pre}
+#n-receipt.on #receipt-json{opacity:1}
+#n-receipt.on #receipt-empty{opacity:0}
+#receipt-empty{transition:opacity .3s}
+#receipt-pill{opacity:0;transition:opacity .4s}
+#n-receipt.on #receipt-pill{opacity:1}
+.pill-ok{fill:var(--accent-tint);stroke:var(--accent-line)}
+#settle-field rect{fill:var(--raised);stroke:var(--line);transition:fill .3s,stroke .3s}
+#settle-field.on rect{fill:var(--accent-tint);stroke:var(--accent)}
+.planned-box{fill:var(--amber-tint);stroke:var(--amber-line);stroke-dasharray:6 4}
+#settle-planned{opacity:.75;transition:opacity .4s}
+#settle-planned.focus{opacity:1}
+.dock{opacity:.75;transition:opacity .3s}
+.dock.focus{opacity:1}
+#packet{opacity:0;pointer-events:none}
+#packet.show{opacity:1}
+#packet rect{fill:var(--accent-fill);stroke:var(--accent)}
+#packet text{font-size:10.5px;font-weight:700;fill:var(--accent-ink)}
+#packet.amber rect{fill:var(--amber-tint);stroke:var(--amber);stroke-dasharray:4 3}
+#packet.amber text{fill:var(--amber-text)}
+.mk-dim{fill:var(--subtle)}.mk-accent{fill:var(--accent)}.mk-amber{fill:var(--amber)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <div class="brand" aria-label="Amussis">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="ca-pin-flat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><radialGradient id="ca-core" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="7"><stop offset="0" stop-color="#f5fffb"/><stop offset="0.28" stop-color="#b8fbe1" stop-opacity="0.9"/><stop offset="0.62" stop-color="#4fe7ae" stop-opacity="0.35"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-halo" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="1.25"/></filter><linearGradient id="ca-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c6fbe5"/><stop offset="0.28" stop-color="#62eeb9"/><stop offset="0.62" stop-color="#27cf91"/><stop offset="1" stop-color="#0c895c"/></linearGradient><linearGradient id="ca-lit1" gradientUnits="userSpaceOnUse" x1="12.166" y1="36.28" x2="21.459" y2="40.263"><stop offset="0" stop-color="#c0c9cd"/><stop offset="0.12" stop-color="#9ea8ad"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#394145"/></linearGradient><radialGradient id="ca-spill" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="17"><stop offset="0" stop-color="#34d7a1" stop-opacity="0.34"/><stop offset="0.55" stop-color="#34d7a1" stop-opacity="0.1"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><linearGradient id="ca-strip" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="60"><stop offset="0" stop-color="#22b583"/><stop offset="0.4" stop-color="#55ebb4"/><stop offset="0.56" stop-color="#86f5cb"/><stop offset="0.76" stop-color="#34d7a1"/><stop offset="1" stop-color="#13895f"/></linearGradient><linearGradient id="ca-lit2" gradientUnits="userSpaceOnUse" x1="42.541" y1="40.263" x2="51.834" y2="36.28"><stop offset="0" stop-color="#9aa4a8"/><stop offset="0.12" stop-color="#889297"/><stop offset="0.4" stop-color="#717b80"/><stop offset="0.75" stop-color="#5e676c"/><stop offset="1" stop-color="#525b60"/></linearGradient><linearGradient id="ca-pin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#596266"/><stop offset="0.38" stop-color="#eef3f4"/><stop offset="0.72" stop-color="#9aa4a8"/><stop offset="1" stop-color="#485054"/></linearGradient><linearGradient id="ca-lit3" gradientUnits="userSpaceOnUse" x1="32" y1="4" x2="32" y2="16"><stop offset="0" stop-color="#bfc8cc"/><stop offset="0.12" stop-color="#9da7ac"/><stop offset="0.4" stop-color="#737d82"/><stop offset="0.75" stop-color="#4f585d"/><stop offset="1" stop-color="#3a4246"/></linearGradient><radialGradient id="ca-bloom" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="15" gradientTransform="translate(0 20) scale(1 0.5)"><stop offset="0" stop-color="#4ff0b5" stop-opacity="0.55"/><stop offset="0.5" stop-color="#34d7a1" stop-opacity="0.18"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><radialGradient id="ca-flash" gradientUnits="userSpaceOnUse" cx="32" cy="40" r="26" gradientTransform="translate(0 15.231) scale(1 0.619)"><stop offset="0" stop-color="#f3fffa" stop-opacity="0.95"/><stop offset="0.32" stop-color="#90f7cf" stop-opacity="0.45"/><stop offset="1" stop-color="#34d7a1" stop-opacity="0"/></radialGradient><filter id="ca-shadow" filterUnits="userSpaceOnUse" x="-40" y="-40" width="144" height="144" color-interpolation-filters="sRGB"><feOffset dx="0.8" dy="1.3"/><feGaussianBlur stdDeviation="1"/></filter></defs><g class="ca-shadow" filter="url(#ca-shadow)" opacity="0.34"><g class="ca-part ca-bar"><path d="M16 36L48 36L48 44L16 44Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd"/></g></g><g class="ca-part ca-bar"><rect x="12.4" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/><rect x="47.6" y="39.1" width="4" height="1.8" rx=".55" fill="url(#ca-pin-flat)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-cap"><rect x="23.957" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/><rect x="38.243" y="14.8" width="1.8" height="5.8" rx=".55" fill="url(#ca-pin)" stroke="#161c1f" stroke-width=".3"/></g><g class="ca-part ca-bar"><path d="M16 36L48 36M48 36L48 44M48 44L16 44M16 44L16 36" fill="none" stroke="#05241a" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16M28.857 16L13 60M13 60L2 60M2 60L20.857 16" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60M51 60L35.143 16M35.143 16L43.143 16M43.143 16L62 60" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-cap"><path d="M26 4L38 4M38 4L43.143 16M43.143 16L20.857 16M20.857 16L26 4" fill="none" stroke="#161c1f" stroke-width=".6" stroke-linecap="round" stroke-linejoin="round"/></g><g class="ca-part ca-bar"><polygon points="16,36 48,36 48,44 16,44" fill="#0d3529"/><g class="ca-lit"><polygon points="16,36 48,36 48,44 16,44" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="16,36 48,36 48,44 16,44" fill="url(#ca-bar)"/><path d="M16.8 36.8L47.2 36.8M16.8 43.2L16.8 36.8" fill="none" stroke="#effff8" stroke-opacity=".75" stroke-width=".42" stroke-linecap="round"/><path d="M47.2 36.8L47.2 43.2M47.2 43.2L16.8 43.2" fill="none" stroke="#06593b" stroke-opacity=".6" stroke-width=".42" stroke-linecap="round"/><circle cx="32" cy="40" r="7" fill="url(#ca-core)"/><rect x="29.5" y="37.5" width="5" height="5" rx=".7" fill="none" stroke="#e6fff4" stroke-opacity=".75" stroke-width=".45"/><rect x="30.7" y="38.7" width="2.6" height="2.6" rx=".45" fill="#f5fffb"/></g></g><g class="ca-part ca-leg-left"><path d="M20.857 16L28.857 16L13 60L2 60Z" fill-rule="evenodd" fill="#596166"/><polygon points="20.857,16 28.857,16 26.722,17.5 21.846,17.5" fill="#d2d9dd"/><polygon points="28.857,16 13,60 11.946,58.5 26.722,17.5" fill="#333b3f"/><polygon points="13,60 2,60 4.275,58.5 11.946,58.5" fill="#333b3f"/><polygon points="2,60 20.857,16 21.846,17.5 4.275,58.5" fill="#d6dde1"/><path d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-lit1)"/><path d="M21.728 17.32L26.978 17.32M4.002 58.68L21.728 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="21.688" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="8.67" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M21.846 17.5L26.722 17.5L11.946 58.5L4.275 58.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#0d3529"/><g class="ca-lit"><polygon points="26.857,16 28.857,16 13,60 11,60" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="26.857,16 28.857,16 13,60 11,60" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-leg-right"><path d="M62 60L51 60L35.143 16L43.143 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="62,60 51,60 52.054,58.5 59.725,58.5" fill="#333b3f"/><polygon points="51,60 35.143,16 37.278,17.5 52.054,58.5" fill="#838c91"/><polygon points="35.143,16 43.143,16 42.154,17.5 37.278,17.5" fill="#d2d9dd"/><polygon points="43.143,16 62,60 59.725,58.5 42.154,17.5" fill="#5b6368"/><path d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-lit2)"/><path d="M37.022 17.32L42.272 17.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><circle cx="42.313" cy="21.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><circle cx="55.33" cy="54.5" r="1.15" fill="#0b0f11" stroke="#c3ccd0" stroke-opacity=".5" stroke-width=".3"/><path class="ca-glow" d="M59.725 58.5L52.054 58.5L37.278 17.5L42.154 17.5Z" fill-rule="evenodd" fill="url(#ca-spill)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#0d3529"/><g class="ca-lit"><polygon points="53,60 51,60 35.143,16 37.143,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="53,60 51,60 35.143,16 37.143,16" fill="url(#ca-strip)"/></g></g><g class="ca-part ca-cap"><path d="M26 4L38 4L43.143 16L20.857 16Z" fill-rule="evenodd" fill="#596166"/><polygon points="26,4 38,4 37.011,5.5 26.989,5.5" fill="#d2d9dd"/><polygon points="38,4 43.143,16 40.868,14.5 37.011,5.5" fill="#5b6368"/><polygon points="43.143,16 20.857,16 23.132,14.5 40.868,14.5" fill="#333b3f"/><polygon points="20.857,16 26,4 26.989,5.5 23.132,14.5" fill="#d6dde1"/><path d="M26.989 5.5L37.011 5.5L40.868 14.5L23.132 14.5Z" fill-rule="evenodd" fill="url(#ca-lit3)"/><path d="M26.87 5.32L37.13 5.32M22.859 14.68L26.87 5.32" fill="none" stroke="#f6fafb" stroke-width=".4" stroke-linecap="round"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#0d3529"/><g class="ca-lit"><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="#3ff0b2" opacity=".75" filter="url(#ca-halo)"/><polygon points="28.857,14 35.143,14 35.143,16 28.857,16" fill="url(#ca-strip)"/></g></g><ellipse class="ca-glow ca-bloom" cx="32" cy="40" rx="15" ry="7.5" fill="url(#ca-bloom)"/><ellipse class="ca-flash" cx="32" cy="40" rx="26" ry="16.1" fill="url(#ca-flash)" opacity="0"/></svg>
+      <span>Amussis<small>AGENTIC ENGINEERING</small></span>
+    </div>
+    <div class="segmented" role="group" aria-label="Colour theme">
+      <button type="button" data-theme-choice="auto">Auto</button>
+      <button type="button" data-theme-choice="light">Light</button>
+      <button type="button" data-theme-choice="dark">Dark</button>
+    </div>
+  </header>
+
+  <section class="intro">
+    <p class="eyebrow">Basic Rollup · transaction lifecycle</p>
+    <h1>One transfer, step by step</h1>
+    <p class="lead">A v1 SOL transfer from <code>rollup_client</code> through <code>rollup_core</code>: what happens, where, and in what order. Agave SVM 4.4.1 with Solana Mainnet parameters.</p>
+  </section>
+
+  <section class="stage-card" aria-label="Animated lifecycle">
+    <div class="stage-scroll">
+<svg id="stage" viewBox="0 0 1200 660" role="img" aria-labelledby="stage-title">
+<title id="stage-title">rollup_client, HTTP frontend, sequencer with six phases, RollupDB, settlement boundary and the Solana cluster</title>
+<defs>
+  <marker id="m-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-dim" d="M0 1L9 5L0 9z"/></marker>
+  <marker id="m-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-accent" d="M0 1L9 5L0 9z"/></marker>
+  <marker id="m-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-amber" d="M0 1L9 5L0 9z"/></marker>
+</defs>
+
+<!-- rollup_client -->
+<g id="n-client" class="node">
+  <rect class="box" x="24" y="24" width="196" height="212" rx="3"/>
+  <text class="t-title mono" x="40" y="50">rollup_client</text>
+  <text class="t-sub" x="40" y="68">signs a v1 transaction</text>
+  <rect class="raised" x="36" y="82" width="172" height="142" rx="3"/>
+  <text class="mono acc" x="48" y="101" font-size="10">VersionedTransaction · v1</text>
+  <g id="tx-hash" class="txrow" data-p><circle cx="52" cy="120" r="3.2"/><text x="62" y="124">recent blockhash</text></g>
+  <g id="tx-transfer" class="txrow" data-p><circle cx="52" cy="140" r="3.2"/><text x="62" y="144">Transfer 100000000</text></g>
+  <g id="tx-cu" class="txrow" data-p><circle cx="52" cy="160" r="3.2"/><text x="62" y="164">compute_unit_limit 150</text></g>
+  <g id="tx-data" class="txrow" data-p><circle cx="52" cy="180" r="3.2"/><text x="62" y="184">loaded data 32 KiB</text></g>
+  <g id="tx-sig" class="txrow" data-p><circle cx="52" cy="200" r="3.2"/><text x="62" y="204">payer signature</text></g>
+</g>
+
+<!-- HTTP frontend -->
+<g id="n-front" class="node">
+  <rect class="box" x="276" y="24" width="206" height="212" rx="3"/>
+  <text class="t-title" x="292" y="50">HTTP frontend</text>
+  <text class="t-sub" x="292" y="68">frontend.rs · actix-web</text>
+  <g id="r-blockhash" class="route"><rect x="286" y="82" width="186" height="20" rx="2"/><text x="296" y="96">GET /get_latest_blockhash</text></g>
+  <g id="r-submit" class="route"><rect x="286" y="106" width="186" height="20" rx="2"/><text x="296" y="120">POST /submit_transaction</text></g>
+  <g id="r-gettx" class="route"><rect x="286" y="130" width="186" height="20" rx="2"/><text x="296" y="144">POST /get_transaction</text></g>
+  <g id="r-account" class="route"><rect x="286" y="154" width="186" height="20" rx="2"/><text x="296" y="168">GET /get_account/{address}</text></g>
+  <g id="r-health" class="route"><rect x="286" y="178" width="186" height="20" rx="2"/><text x="296" y="192">GET /</text></g>
+  <text class="mono muted" x="292" y="222" font-size="10">127.0.0.1:8080</text>
+</g>
+
+<!-- Client <-> frontend <-> sequencer -->
+<path id="c-cf-req" class="conn" d="M220 110H274"/>
+<path id="c-cf-res" class="conn" d="M276 190H222"/>
+<path id="c-fs-req" class="conn" d="M482 110H544"/>
+<path id="c-fs-res" class="conn" d="M546 190H484"/>
+<text class="clabel" x="248" y="100" text-anchor="middle">HTTP</text>
+<text class="clabel" x="514" y="100" text-anchor="middle">mpsc</text>
+<text class="clabel" x="514" y="208" text-anchor="middle">oneshot</text>
+
+<!-- Sequencer -->
+<g id="n-seq" class="node">
+  <rect class="box" x="546" y="24" width="630" height="212" rx="3"/>
+  <text class="t-title" x="566" y="50">Sequencer</text>
+  <text class="t-sub" x="566" y="68">Sequencer::run · one message at a time</text>
+  <text id="seq-status1" class="mono acc" x="1160" y="50" text-anchor="end" font-size="11"></text>
+  <text id="seq-status2" class="muted" x="1160" y="68" text-anchor="end" font-size="11"></text>
+  <line id="ph-track" x1="606" y1="150" x2="1116" y2="150"/>
+  <g id="ph-decode" class="chip"><rect x="562" y="84" width="88" height="52" rx="3"/><text class="n" x="570" y="98">1</text><text class="nm" x="606" y="117" text-anchor="middle">decode</text></g>
+  <g id="ph-validate" class="chip"><rect x="664" y="84" width="88" height="52" rx="3"/><text class="n" x="672" y="98">2</text><text class="nm" x="708" y="117" text-anchor="middle">validate</text></g>
+  <g id="ph-load" class="chip"><rect x="766" y="84" width="88" height="52" rx="3"/><text class="n" x="774" y="98">3</text><text class="nm" x="810" y="117" text-anchor="middle">load</text></g>
+  <g id="ph-budget" class="chip"><rect x="868" y="84" width="88" height="52" rx="3"/><text class="n" x="876" y="98">4</text><text class="nm" x="912" y="117" text-anchor="middle">budget</text></g>
+  <g id="ph-process" class="chip"><rect x="970" y="84" width="88" height="52" rx="3"/><text class="n" x="978" y="98">5</text><text class="nm" x="1014" y="117" text-anchor="middle">process</text></g>
+  <g id="ph-commit" class="chip"><rect x="1072" y="84" width="88" height="52" rx="3"/><text class="n" x="1080" y="98">6</text><text class="nm" x="1116" y="117" text-anchor="middle">commit</text></g>
+  <circle id="ph-dot" cx="0" cy="150" r="4.5"/>
+  <text class="gist" x="606" y="168" text-anchor="middle">4096 bytes</text>
+  <text class="gist" x="708" y="168" text-anchor="middle">signatures, replay</text>
+  <text class="gist" x="810" y="168" text-anchor="middle">pull unseen</text>
+  <text class="gist" x="912" y="168" text-anchor="middle">fee 5000</text>
+  <text class="gist" x="1014" y="168" text-anchor="middle">SVM executes</text>
+  <text class="gist" x="1116" y="168" text-anchor="middle">state + receipt</text>
+  <line x1="562" y1="182" x2="1160" y2="182" stroke="var(--line)"/>
+  <text id="seq-detail" x="566" y="204" font-size="12"></text>
+  <text id="seq-detail2" class="muted" x="566" y="223" font-size="11.5"></text>
+</g>
+
+<!-- Sequencer <-> RollupDB, settlement -->
+<path id="c-pull" class="conn" d="M580 236V278"/>
+<text class="clabel" x="588" y="262">pull()</text>
+<path id="c-commit" class="conn" d="M660 236V278"/>
+<text class="clabel" x="668" y="262">commit()</text>
+<path id="c-get" class="conn" d="M740 280V238"/>
+<text class="clabel" x="748" y="262">get_account_shared_data</text>
+<path id="c-settle" class="conn" d="M1050 236V278"/>
+<text class="clabel" x="1058" y="262">SettlementStatus</text>
+
+<!-- Receipt -->
+<g id="n-receipt" class="node" data-p>
+  <rect class="box" x="24" y="280" width="458" height="260" rx="3"/>
+  <text class="t-title" x="44" y="308">Receipt</text>
+  <g id="receipt-pill"><rect class="pill-ok" x="388" y="294" width="74" height="20" rx="3"/><text class="mono acc" x="425" y="308" text-anchor="middle" font-size="10.5" font-weight="700">HTTP 200</text></g>
+  <g id="receipt-empty">
+    <text class="muted" x="44" y="342" font-size="12">Submission waits for execution and commit;</text>
+    <text class="muted" x="44" y="360" font-size="12">the receipt arrives here.</text>
+  </g>
+  <g id="receipt-json" class="mono" font-size="12" xml:space="preserve">
+    <text class="mono" x="44" y="342">{</text>
+    <text class="mono" x="44" y="363">  "signature": <tspan class="acc">"&lt;first signature&gt;"</tspan>,</text>
+    <text class="mono" x="44" y="384">  "version": <tspan class="acc">1</tspan>,</text>
+    <text class="mono" x="44" y="405">  "status": <tspan class="acc">"executed"</tspan>,</text>
+    <text class="mono" x="44" y="426">  "fee": <tspan class="acc">5000</tspan>,</text>
+    <text class="mono" x="44" y="447">  "compute_units_consumed": <tspan class="acc">150</tspan>,</text>
+    <text class="mono" x="44" y="468">  "settlement": <tspan class="acc">"not_configured"</tspan>,</text>
+    <text class="mono" x="44" y="489">  "sol_transaction": <tspan class="acc">"&lt;base64, as submitted&gt;"</tspan></text>
+    <text class="mono" x="44" y="510">}</text>
+  </g>
+</g>
+
+<!-- RollupDB -->
+<g id="n-db" class="node">
+  <rect class="box" x="546" y="280" width="354" height="260" rx="3"/>
+  <text class="t-title" x="566" y="308">RollupDB</text>
+  <text class="t-sub" x="566" y="326">owned by the sequencer · in memory</text>
+  <text class="t-eye" x="566" y="350">ACCOUNTS</text>
+  <text class="t-eye" x="880" y="350" text-anchor="end">LAMPORTS</text>
+  <g id="db-payer" class="dbrow" data-p>
+    <rect x="556" y="358" width="334" height="44" rx="2"/>
+    <text x="570" y="376" font-size="12.5" font-weight="600">payer</text>
+    <text class="muted" x="570" y="393" font-size="10.5">from ROLLUP_GENESIS</text>
+    <text class="mono" x="880" y="376" text-anchor="end" font-size="12.5">10000000000</text>
+    <text id="d-payer" class="delta mono cor" x="880" y="393" text-anchor="end" font-size="11" font-weight="600" data-p>−100000000  −5000</text>
+  </g>
+  <g id="db-recipient" class="dbrow" data-p>
+    <rect x="556" y="406" width="334" height="44" rx="2"/>
+    <text x="570" y="424" font-size="12.5" font-weight="600">recipient</text>
+    <text id="tag-recipient" class="muted" x="570" y="441" font-size="10.5" data-p>unseen</text>
+    <text id="b-recipient" class="muted" x="880" y="424" text-anchor="end" font-size="11.5" data-p>not in RollupDB</text>
+    <text id="d-recipient" class="delta mono acc" x="880" y="441" text-anchor="end" font-size="11" font-weight="600" data-p>+100000000</text>
+  </g>
+  <g id="db-system" class="dbrow" data-p>
+    <rect x="556" y="454" width="334" height="30" rx="2"/>
+    <text x="570" y="473" font-size="12.5" font-weight="600">System program</text>
+    <text class="muted" x="880" y="473" text-anchor="end" font-size="11">built in</text>
+  </g>
+  <text class="t-eye" x="566" y="504">TRANSACTIONS</text>
+  <text id="db-tx" x="566" y="525" data-p>empty</text>
+</g>
+
+<!-- Settlement boundary -->
+<g id="n-settle" class="node">
+  <rect class="box" x="930" y="280" width="246" height="260" rx="3"/>
+  <text class="t-title" x="950" y="308">Settlement boundary</text>
+  <text class="mono muted" x="950" y="326" font-size="10.5">settle.rs</text>
+  <text class="mono" x="950" y="350" font-size="10.5">SettlementStatus::NotConfigured</text>
+  <g id="settle-field" data-p><rect x="946" y="362" width="214" height="32" rx="3"/><text class="mono" x="956" y="383" font-size="11.5">settlement: <tspan class="acc">"not_configured"</tspan></text></g>
+  <g id="settle-planned">
+    <rect class="planned-box" x="946" y="406" width="214" height="120" rx="3"/>
+    <text class="t-eye amb" x="958" y="426">PLANNED · NOT DECIDED</text>
+    <text x="958" y="446" font-size="11">Preferred: a devnet program</text>
+    <text x="958" y="462" font-size="11">locks the accounts while the</text>
+    <text x="958" y="478" font-size="11">rollup uses them, then moves</text>
+    <text x="958" y="494" font-size="11">the final lamports between</text>
+    <text x="958" y="510" font-size="11">them at settlement.</text>
+  </g>
+</g>
+
+<!-- Solana cluster -->
+<path id="c-rpc" class="conn" d="M720 578V542"/>
+<path id="c-settle-l1" class="conn planned" d="M980 540V576"/>
+<g id="n-l1" class="node">
+  <rect class="l1box" x="24" y="580" width="1152" height="64" rx="3"/>
+  <text class="t-title" x="44" y="606">Solana cluster (L1)</text>
+  <text class="t-sub" x="44" y="626">ROLLUP_CLUSTER_URL · devnet, Mainnet or a local validator</text>
+  <g id="l1-pull" class="dock"><text class="mono acc" x="732" y="606" font-size="11">getMultipleAccounts</text><text class="muted" x="732" y="625" font-size="10.5">each unseen account, once · implemented</text></g>
+  <g id="l1-settle" class="dock"><text class="amb" x="992" y="606" font-size="11.5" font-weight="600">settlement program</text><text class="amb" x="992" y="625" font-size="10.5">planned · not decided</text></g>
+</g>
+
+<g id="packet"><rect x="0" y="-10" width="60" height="20" rx="10"/><text x="30" y="4" text-anchor="middle"></text></g>
+</svg>
+    </div>
+    <div class="controls">
+      <button type="button" class="btn" id="btn-restart" aria-label="Restart"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg><span>Restart</span></button>
+      <button type="button" class="btn" id="btn-prev" aria-label="Previous step"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg><span>Back</span></button>
+      <button type="button" class="btn btn-primary" id="btn-play" aria-label="Pause"><svg viewBox="0 0 24 24" id="play-icon"><path d="M8 5v14M16 5v14"/></svg><b id="play-label">Pause</b></button>
+      <button type="button" class="btn" id="btn-next" aria-label="Next step"><span>Next</span><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      <div class="progress" aria-hidden="true">
+        <div class="progress-row"><b id="progress-name"></b><span>Space plays or pauses · arrow keys step</span></div>
+        <div class="bar"><i id="progress-bar"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="explain">
+    <div class="panel caption" aria-live="polite">
+      <p class="kicker" id="cap-kicker"></p>
+      <h2 id="cap-title"></h2>
+      <p id="cap-body"></p>
+      <p class="ref" id="cap-ref"></p>
+    </div>
+    <div class="panel limits">
+      <h3>Limits and values at this step</h3>
+      <ul id="cap-limits"></ul>
+    </div>
+  </section>
+
+  <nav aria-label="Steps"><ol class="timeline" id="timeline"></ol></nav>
+
+  <footer class="notes">
+    <div class="legend"><span><i></i>implemented</span><span><i class="planned"></i>planned, mechanism not decided (settlement)</span></div>
+    <p>Every number comes from the repository's <code>README.md</code> or source. Balances are shown as the changes the tests assert: payer <code>10000000000 − 100000000 − 5000</code>, recipient <code>+100000000</code>.</p>
+    <p>The scenario: <code>ROLLUP_GENESIS</code> funds the payer and <code>ROLLUP_CLUSTER_URL</code> is set, so the unseen recipient is pulled from the cluster. Without a cluster URL the load phase does nothing.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var HOLD = 5200;
+
+  // Packet routes, in stage coordinates.
+  var R = {
+    clientToFront: [[220, 110], [276, 110]],
+    frontToSeq: [[482, 110], [546, 110]],
+    seqToFront: [[546, 190], [482, 190]],
+    frontToClient: [[276, 190], [220, 190]],
+    pull: [[580, 236], [580, 280]],
+    dbToCluster: [[720, 540], [720, 580]],
+    clusterToDb: [[720, 580], [720, 540]],
+    getAccounts: [[740, 280], [740, 236]],
+    commit: [[660, 236], [660, 280]],
+    toSettle: [[1050, 236], [1050, 280]],
+    settleToCluster: [[980, 540], [980, 580]]
+  };
+  function mv(route, label, kind) { return { pts: R[route], label: label, kind: kind || 'accent' }; }
+
+  var PHASES = ['decode', 'validate', 'load', 'budget', 'process', 'commit'];
+  var CHIP_X = { decode: 606, validate: 708, load: 810, budget: 912, process: 1014, commit: 1116 };
+
+  var steps = [
+    {
+      label: 'Startup', kicker: 'Before any request', title: 'The server starts with its state',
+      body: 'RollupDB::new holds the System program. load_genesis adds the funded accounts from ROLLUP_GENESIS, here the payer with 10000000000 lamports. ROLLUP_CLUSTER_URL names the cluster that unseen accounts are pulled from. The sequencer gets its own thread, and the HTTP server listens on 127.0.0.1:8080.',
+      ref: 'main.rs · rollupdb.rs: RollupDB::new, RollupDB::load_genesis',
+      limits: [['10000000000', 'payer lamports in the README\'s genesis'], ['127.0.0.1:8080', 'default bind address, ROLLUP_BIND']],
+      focus: ['n-db', 'db-payer', 'n-l1'],
+      at: [['on', 'db-payer'], ['on', 'db-system']],
+      seq: ['', ''], detail: ['Waiting for a SequencerMessage', 'One message at a time; it alone owns RollupDB.'],
+      hold: 4600
+    },
+    {
+      label: 'Blockhash', kicker: 'Client · GET /get_latest_blockhash', title: 'Fetch a fresh blockhash',
+      body: 'The client asks for a blockhash. The frontend sends SequencerMessage::Blockhash, and issue_blockhash makes a fresh random hash and keeps it in recent_blockhashes, which holds the last 150 issued. The hash goes back to the client, which signs right away.',
+      ref: 'sequencer.rs · Sequencer::issue_blockhash',
+      limits: [['150', 'issued blockhashes accepted (MAX_PROCESSING_AGE)']],
+      focus: ['n-client', 'n-front', 'n-seq', 'r-blockhash', 'c-cf-req', 'c-fs-req', 'c-fs-res', 'c-cf-res'],
+      moves: [mv('clientToFront', 'GET'), mv('frontToSeq', 'Blockhash'), mv('seqToFront', 'hash'), mv('frontToClient', 'hash')],
+      then: [['on', 'tx-hash']],
+      seq: ['SequencerMessage::Blockhash', 'issue_blockhash'], detail: ['A fresh hash joins recent_blockhashes', 'The oldest is dropped once 150 are held.']
+    },
+    {
+      label: 'Sign', kicker: 'Client · rollup_client', title: 'Build and sign a v1 transfer',
+      body: 'system_instruction::transfer moves 100000000 lamports (0.1 demo SOL) from the payer to the recipient. Message::try_compile_with_config builds a v1 message with TRANSFER_CONFIG, because a v1 message states its own limits and leaves anything unset at zero. VersionedTransaction::try_new signs it with the payer keypair, and wincode serializes it.',
+      ref: 'rollup_client/src/main.rs · TRANSFER_CONFIG',
+      limits: [['100000000', 'lamports, the README example'], ['150', 'compute_unit_limit in TRANSFER_CONFIG'], ['32 KiB', 'loaded accounts data size limit']],
+      focus: ['n-client'],
+      at: [['on', 'tx-transfer'], ['on', 'tx-cu'], ['on', 'tx-data']],
+      delay: 1300, then: [['on', 'tx-sig']],
+      seq: ['', ''], detail: ['Waiting for a SequencerMessage', 'Signing happens in the client; the server sees only the bytes.']
+    },
+    {
+      label: 'Submit', kicker: 'Client → HTTP frontend', title: 'POST /submit_transaction',
+      body: 'The client posts {"sol_transaction": base64}, the same bytes Solana\'s sendTransaction takes. The frontend decodes the base64 and sends SequencerMessage::Submit, with a oneshot reply channel, over mpsc::channel(128). The HTTP request stays open until the sequencer has executed and committed the transaction.',
+      ref: 'frontend.rs · submit_transaction',
+      limits: [['32 KiB', 'JSON body limit (main.rs)'], ['128', 'mpsc channel capacity']],
+      focus: ['n-client', 'n-front', 'n-seq', 'r-submit', 'c-cf-req', 'c-fs-req'],
+      moves: [mv('clientToFront', 'v1 tx'), mv('frontToSeq', 'Submit')],
+      seq: ['SequencerMessage::Submit', 'execute(): six phases'], detail: ['execute() takes the wire bytes through six phases', 'Each phase can refuse; none of those refusals charge a fee.']
+    },
+    {
+      phase: 'decode', label: 'decode', kicker: 'Phase 1 · decode', title: 'Wire bytes become a transaction',
+      body: 'The first byte is V1_PREFIX, so this is a v1 transaction and its wire limit is 4096 bytes; legacy and v0 transactions are held to 1232. v1 also needs the enable_tx_v1 feature, which is active. wincode::deserialize_exact then parses the bytes into a VersionedTransaction. A refusal here returns 400.',
+      ref: 'sequencer.rs · Sequencer::decode',
+      limits: [['4096 bytes', 'v1 wire size, v1::MAX_TRANSACTION_SIZE'], ['1232 bytes', 'legacy and v0, PACKET_DATA_SIZE'], ['400', 'oversized, malformed or v1 not enabled']],
+      focus: ['n-seq'],
+      seq: ['execute()', 'phase 1 of 6'], detail: ['V1_PREFIX → wire limit 4096 bytes', 'wincode::deserialize_exact → VersionedTransaction']
+    },
+    {
+      phase: 'validate', label: 'validate', kicker: 'Phase 2 · validate', title: 'Signatures, sanitization, blockhash, replay',
+      body: 'verify_and_hash_message checks the payer\'s signature. RuntimeTransaction::try_create sanitizes the message within the v1 limits, and validate_account_locks allows 64 account locks. The blockhash must be one of the last 150 issued, every instruction must be a System Transfer, and the signature must be new: a replay returns 409, anything else invalid returns 400.',
+      ref: 'sequencer.rs · Sequencer::validate',
+      limits: [['64 · 64 · 12', 'v1 accounts, instructions, signatures'], ['64', 'account locks; the raise to 128 is not active'], ['150', 'most recent issued blockhashes'], ['409', 'signature already processed']],
+      focus: ['n-seq'],
+      seq: ['execute()', 'phase 2 of 6'], detail: ['signature ✓  sanitized ✓  locks ✓  blockhash ✓', 'System Transfer only ✓  not processed before ✓']
+    },
+    {
+      phase: 'load', label: 'load', kicker: 'Phase 3 · load', title: 'Pull the accounts the rollup has not seen',
+      body: 'RollupDB::pull looks at every account key. The payer came from genesis and the System program is built in, so both are resolved already. The recipient is unseen, so one getMultipleAccounts request copies it from the cluster; an address with no account there becomes new. It is pulled once; after that the rollup changes only its own copy. A cluster that does not answer within 10 s gives 503.',
+      ref: 'sequencer.rs · Sequencer::load → rollupdb.rs · RollupDB::pull',
+      limits: [['10 s', 'CLUSTER_TIMEOUT per request'], ['once', 'per address, then resolved'], ['503', 'the cluster did not answer']],
+      focus: ['n-seq', 'n-db', 'n-l1', 'c-pull', 'c-rpc', 'l1-pull', 'db-recipient'],
+      moves: [mv('pull', 'pull()'), mv('dbToCluster', 'request'), mv('clusterToDb', 'account')],
+      then: [['on', 'db-recipient'], ['text', 'tag-recipient', 'pulled once from the cluster'], ['text', 'b-recipient', 'cluster copy']],
+      seq: ['execute()', 'phase 3 of 6'], detail: ['RollupDB::pull: payer and System program resolved', 'recipient unseen → getMultipleAccounts']
+    },
+    {
+      phase: 'budget', label: 'budget', kicker: 'Phase 4 · budget', title: 'Compute limit and fee',
+      body: 'transaction_configuration reads the v1 message config: a compute unit limit of 150 and a loaded accounts data limit of 32 KiB. calculate_fee_details prices the transaction the way a validator does: 5000 lamports for its one signature, plus the v1 priority fee, which TRANSFER_CONFIG leaves unset.',
+      ref: 'sequencer.rs · Sequencer::budget',
+      limits: [['150 CU', 'compute_unit_limit from the v1 config'], ['32 KiB', 'loaded accounts data size limit'], ['5000 lamports', 'per signature, plus any v1 priority fee']],
+      focus: ['n-seq'],
+      seq: ['execute()', 'phase 4 of 6'], detail: ['compute_unit_limit 150 · loaded data 32 KiB', 'fee: 5000 lamports per signature']
+    },
+    {
+      phase: 'process', label: 'process', kicker: 'Phase 5 · process', title: 'The SVM executes the transfer',
+      body: 'load_and_execute_sanitized_transactions reads the payer, the recipient and the System program through get_account_shared_data, charges the 5000-lamport fee and runs the System program\'s Transfer, which consumes 150 compute units. Rent is Mainnet\'s, 5080 lamports per byte, so a new recipient needs at least 650240 lamports, and 100000000 clears it. A payer that cannot pay the fee gives 422.',
+      ref: 'sequencer.rs · Sequencer::process',
+      limits: [['150 CU', 'consumed by a System transfer'], ['5080', 'lamports per byte of rent'], ['650240', 'lamports, the minimum for a new empty account'], ['422', 'fee payer cannot pay the fee']],
+      focus: ['n-seq', 'n-db', 'c-get', 'db-payer', 'db-recipient'],
+      moves: [mv('getAccounts', 'accounts')],
+      seq: ['execute()', 'phase 5 of 6'], detail: ['Agave SVM: Transfer 100000000 lamports', 'fee 5000 charged · 150 compute units consumed']
+    },
+    {
+      phase: 'commit', label: 'commit', kicker: 'Phase 6 · commit', title: 'State and receipt in one step',
+      body: 'RollupDB::commit stores the accounts the transfer touched and the receipt, keyed by the signature, in one step, so no query sees half of it. The payer pays 100000000 plus the 5000 fee and the recipient gains 100000000. Had execution failed, only the fee payment would be kept and the receipt would say failed.',
+      ref: 'sequencer.rs · Sequencer::commit → rollupdb.rs · RollupDB::commit',
+      limits: [['−100000000 −5000', 'payer: transfer and fee'], ['+100000000', 'recipient'], ['fee only', 'kept when execution fails']],
+      focus: ['n-seq', 'n-db', 'c-commit', 'db-payer', 'db-recipient'],
+      moves: [mv('commit', 'commit()')],
+      then: [['on', 'd-payer'], ['on', 'd-recipient'], ['on', 'db-tx'], ['text', 'db-tx', '<signature> → receipt, executed']],
+      seq: ['execute()', 'phase 6 of 6'], detail: ['accounts and receipt stored together', 'An account left with no lamports would be removed.']
+    },
+    {
+      label: 'Receipt', kicker: 'HTTP 200', title: 'The receipt returns to the client',
+      body: 'The oneshot reply carries the receipt to the frontend, which answers HTTP 200: the signature, version 1, status executed, fee 5000, compute_units_consumed 150, settlement not_configured and the sol_transaction as submitted.',
+      ref: 'frontend.rs · submit_transaction · rollupdb.rs · TransactionReceipt',
+      limits: [['200', 'landed, whether executed or failed'], ['5000', 'fee in the receipt'], ['150', 'compute_units_consumed']],
+      focus: ['n-front', 'n-client', 'n-receipt', 'r-submit', 'c-fs-res', 'c-cf-res'],
+      moves: [mv('seqToFront', 'receipt'), mv('frontToClient', 'receipt')],
+      then: [['on', 'n-receipt']],
+      seq: ['oneshot reply', ''], detail: ['execute() returned the receipt', 'The submit request ends here.']
+    },
+    {
+      label: 'Lookup', kicker: 'Client · POST /get_transaction', title: 'Read the stored receipt',
+      body: 'The client looks the receipt up by its signature. SequencerMessage::Transaction returns the stored copy from RollupDB\'s transactions, and the client prints it.',
+      ref: 'frontend.rs · get_transaction',
+      limits: [['404', 'no receipt for that signature']],
+      focus: ['n-client', 'n-front', 'n-seq', 'n-db', 'r-gettx', 'c-cf-req', 'c-fs-req', 'c-fs-res', 'c-cf-res'],
+      moves: [mv('clientToFront', 'signature'), mv('frontToSeq', 'Transaction'), mv('seqToFront', 'receipt'), mv('frontToClient', 'receipt')],
+      seq: ['SequencerMessage::Transaction', 'read only'], detail: ['RollupDB transactions: lookup by signature', 'Reads see only fully committed state.']
+    },
+    {
+      label: 'Settlement', planned: true, kicker: 'Settlement boundary · planned', title: 'Settlement is not configured yet',
+      body: 'Every receipt reports settlement: "not_configured"; no settlement program, escrow or bridge exists yet. Settlement is planned and its mechanism is not decided. The preferred direction is a devnet program that takes control of the accounts while the rollup uses them, locking them on the cluster, and moves the final lamports between them at settlement. Until then nothing is written back or locked on the cluster, so pulled lamports can still be spent there.',
+      ref: 'settle.rs · SettlementStatus::NotConfigured',
+      limits: [['not_configured', 'settlement in every receipt'], ['planned', 'a devnet program locks the accounts during use and moves the final lamports at settlement'], ['not decided', 'the mechanism may still change']],
+      focus: ['n-settle', 'c-settle', 'c-settle-l1', 'settle-planned', 'l1-settle'],
+      moves: [mv('toSettle', 'SettlementStatus'), mv('settleToCluster', 'planned', 'amber')],
+      then: [['on', 'settle-field']],
+      seq: ['', ''], detail: ['Waiting for the next SequencerMessage', '']
+    }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage');
+  var packet = $('packet');
+  var packetRect = packet.querySelector('rect');
+  var packetText = packet.querySelector('text');
+  var index = 0, playing = !reduceMotion, token = 0, timer = null, settled = false;
+
+  stage.querySelectorAll('[data-p]').forEach(function (el) {
+    if (el.tagName.toLowerCase() === 'text') el.setAttribute('data-init', el.textContent);
+  });
+
+  function applyOps(ops) {
+    (ops || []).forEach(function (op) {
+      var el = $(op[1]);
+      if (!el) return;
+      if (op[0] === 'on') el.classList.add('on');
+      else if (op[0] === 'off') el.classList.remove('on');
+      else if (op[0] === 'text') el.textContent = op[2];
+    });
+  }
+
+  function resetState() {
+    stage.querySelectorAll('[data-p]').forEach(function (el) {
+      el.classList.remove('on');
+      if (el.hasAttribute('data-init')) el.textContent = el.getAttribute('data-init');
+    });
+    stage.querySelectorAll('.focus').forEach(function (el) { el.classList.remove('focus'); });
+  }
+
+  function phaseStep(name) {
+    for (var k = 0; k < steps.length; k++) if (steps[k].phase === name) return k;
+    return -1;
+  }
+
+  function setPacket(x, y) { packet.setAttribute('transform', 'translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ')'); }
+
+  function runMoves(moves, delay, my) {
+    var chain = Promise.resolve();
+    if (delay) chain = chain.then(function () { return wait(delay, my); });
+    moves.forEach(function (m) {
+      chain = chain.then(function () {
+        if (my !== token) return;
+        packet.classList.toggle('amber', m.kind === 'amber');
+        packetText.textContent = m.label;
+        var w = Math.max(44, m.label.length * 6.6 + 18);
+        packetRect.setAttribute('x', -w / 2);
+        packetRect.setAttribute('width', w);
+        packetText.setAttribute('x', 0);
+        setPacket(m.pts[0][0], m.pts[0][1]);
+        packet.classList.add('show');
+        return animate(m.pts, 760, my).then(function () { return wait(160, my); }).then(function () { packet.classList.remove('show'); });
+      });
+    });
+    return chain;
+  }
+
+  function wait(ms, my) {
+    return new Promise(function (resolve) { setTimeout(resolve, my === token ? ms : 0); });
+  }
+
+  function animate(pts, duration, my) {
+    return new Promise(function (resolve) {
+      var start = null;
+      function frame(ts) {
+        if (my !== token) { resolve(); return; }
+        if (start === null) start = ts;
+        var p = Math.min(1, (ts - start) / duration);
+        var e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        setPacket(pts[0][0] + (pts[1][0] - pts[0][0]) * e, pts[0][1] + (pts[1][1] - pts[0][1]) * e);
+        if (p < 1) requestAnimationFrame(frame); else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }
+
+  function renderCaption(s, i) {
+    $('cap-kicker').textContent = s.kicker;
+    $('cap-kicker').classList.toggle('planned', !!s.planned);
+    $('cap-title').textContent = s.title;
+    $('cap-body').textContent = s.body;
+    $('cap-ref').textContent = s.ref;
+    var list = $('cap-limits');
+    list.textContent = '';
+    (s.limits || []).forEach(function (l) {
+      var li = document.createElement('li');
+      var b = document.createElement('b'); b.textContent = l[0];
+      var span = document.createElement('span'); span.textContent = l[1];
+      li.appendChild(b); li.appendChild(span); list.appendChild(li);
+    });
+    $('progress-name').textContent = s.label;
+    $('progress-bar').style.width = ((i + 1) / steps.length * 100) + '%';
+    timelineButtons.forEach(function (btn, k) {
+      if (k === i) btn.setAttribute('aria-current', 'step'); else btn.removeAttribute('aria-current');
+      btn.classList.toggle('seen', k < i);
+    });
+  }
+
+  function render(i, animateIt) {
+    token++;
+    var my = token;
+    clearTimeout(timer);
+    settled = false;
+    index = i;
+    packet.classList.remove('show');
+    resetState();
+    for (var k = 0; k < i; k++) { applyOps(steps[k].at); applyOps(steps[k].then); }
+    var s = steps[i];
+    applyOps(s.at);
+    (s.focus || []).forEach(function (id) { var el = $(id); if (el) el.classList.add('focus'); });
+
+    var active = null;
+    PHASES.forEach(function (p) {
+      var at = phaseStep(p);
+      var chip = $('ph-' + p);
+      chip.classList.toggle('done', i > at);
+      chip.classList.toggle('active', i === at);
+      if (i === at) active = p;
+    });
+    var dot = $('ph-dot');
+    var lastPhase = phaseStep('commit');
+    var dotPhase = active || (i > lastPhase ? 'commit' : null);
+    dot.classList.toggle('on', !!active);
+    if (dotPhase) dot.style.transform = 'translateX(' + CHIP_X[dotPhase] + 'px)';
+    else if (i <= phaseStep('decode')) dot.style.transform = 'translateX(' + CHIP_X.decode + 'px)';
+
+    $('seq-status1').textContent = s.seq ? s.seq[0] : '';
+    $('seq-status2').textContent = s.seq ? s.seq[1] : '';
+    $('seq-detail').textContent = s.detail ? s.detail[0] : '';
+    $('seq-detail2').textContent = s.detail ? s.detail[1] : '';
+    renderCaption(s, i);
+
+    var finish = function () {
+      if (my !== token) return;
+      applyOps(s.then);
+      settled = true;
+      schedule(my, s.hold || HOLD);
+    };
+    if (animateIt && !reduceMotion && ((s.moves && s.moves.length) || s.delay)) runMoves(s.moves || [], s.delay || 0, my).then(finish);
+    else finish();
+  }
+
+  function schedule(my, ms) {
+    clearTimeout(timer);
+    if (!playing) return;
+    timer = setTimeout(function () {
+      if (my !== token || !playing) return;
+      if (index < steps.length - 1) render(index + 1, true); else setPlaying(false);
+    }, ms);
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    var btn = $('btn-play');
+    btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+    $('play-label').textContent = on ? 'Pause' : 'Play';
+    $('play-icon').innerHTML = on ? '<path d="M8 5v14M16 5v14"/>' : '<path d="M7 4.5v15l12-7.5z"/>';
+    if (!on) { clearTimeout(timer); return; }
+    if (index === steps.length - 1 && settled) { render(0, true); return; }
+    if (settled) schedule(token, 700);
+  }
+
+  // Timeline
+  var timelineButtons = steps.map(function (s, k) {
+    var li = document.createElement('li');
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = s.label;
+    if (s.phase) b.classList.add('mono');
+    if (s.planned) b.classList.add('planned');
+    b.addEventListener('click', function () { render(k, true); });
+    li.appendChild(b);
+    $('timeline').appendChild(li);
+    return b;
+  });
+
+  $('btn-play').addEventListener('click', function () { setPlaying(!playing); });
+  $('btn-next').addEventListener('click', function () { if (index < steps.length - 1) render(index + 1, true); });
+  $('btn-prev').addEventListener('click', function () { if (index > 0) render(index - 1, true); });
+  $('btn-restart').addEventListener('click', function () { render(0, true); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === ' ' && !(e.target && e.target.tagName === 'BUTTON')) { e.preventDefault(); setPlaying(!playing); }
+    else if (e.key === 'ArrowRight') { if (index < steps.length - 1) render(index + 1, true); }
+    else if (e.key === 'ArrowLeft') { if (index > 0) render(index - 1, true); }
+    else if (e.key === 'Home') { render(0, true); }
+  });
+
+  // Theme switch
+  var themeButtons = document.querySelectorAll('[data-theme-choice]');
+  function markTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'auto';
+    themeButtons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-choice') === current)); });
+  }
+  themeButtons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var choice = b.getAttribute('data-theme-choice');
+      if (choice === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', choice);
+      try { localStorage.setItem('basic-rollup-theme', choice); } catch (e) {}
+      markTheme();
+    });
+  });
+  markTheme();
+
+  setPlaying(playing);
+  render(0, true);
+})();
+</script>
+</body>
+</html>
